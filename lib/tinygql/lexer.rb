@@ -90,35 +90,31 @@ module TinyGQL
       raise unless string.valid_encoding?
 
       @scan = StringScanner.new string
-      @line = 1
     end
 
     def next_token
       return if @scan.eos?
 
-      pos = @scan.pos
-
       case
-      when str = @scan.scan(FLOAT)         then emit(:FLOAT, pos, @scan.pos, str)
-      when str = @scan.scan(INT)           then emit(:INT, pos, @scan.pos, str)
-      when str = @scan.scan(LIT)           then emit(LIT_NAME_LUT[str], pos, @scan.pos, -str)
-      when str = @scan.scan(IDENTIFIER)    then emit(:IDENTIFIER, pos, @scan.pos, str)
-      when str = @scan.scan(BLOCK_STRING)  then emit_block(pos, @scan.pos, str.gsub(/\A#{BLOCK_QUOTE}|#{BLOCK_QUOTE}\z/, ''))
-      when str = @scan.scan(QUOTED_STRING) then emit_string(pos, @scan.pos, str.gsub(/^"|"$/, ''))
-      when str = @scan.scan(COMMENT)       then record_comment(pos, @scan.pos, str)
+      when str = @scan.scan(FLOAT)         then emit(:FLOAT, str)
+      when str = @scan.scan(INT)           then emit(:INT, str)
+      when str = @scan.scan(LIT)           then emit(LIT_NAME_LUT[str], -str)
+      when str = @scan.scan(IDENTIFIER)    then emit(:IDENTIFIER, str)
+      when str = @scan.scan(BLOCK_STRING)  then emit_block(str.gsub(/\A#{BLOCK_QUOTE}|#{BLOCK_QUOTE}\z/, ''))
+      when str = @scan.scan(QUOTED_STRING) then emit_string(str.gsub(/\A"|"\z/, ''))
+      when str = @scan.scan(COMMENT)       then record_comment(str)
       when str = @scan.scan(NEWLINE)
-        @line += 1
         next_token
       when @scan.scan(BLANK)
         next_token
-      when str = @scan.scan(UNKNOWN_CHAR) then emit(:UNKNOWN_CHAR, pos, @scan.pos, str)
+      when str = @scan.scan(UNKNOWN_CHAR) then emit(:UNKNOWN_CHAR, str)
       else
         # This should never happen since `UNKNOWN_CHAR` ensures we make progress
         raise "Unknown string?"
       end
     end
 
-    def emit token_name, ts, te, token_value
+    def emit token_name, token_value
       [token_name, token_value]
     end
 
@@ -148,7 +144,7 @@ module TinyGQL
       nil
     end
 
-    def record_comment(ts, te, str)
+    def record_comment(str)
       next_token
     end
 
@@ -166,23 +162,21 @@ module TinyGQL
     UTF_8 = /\\u(?:([\dAa-f]{4})|\{([\da-f]{4,})\})(?:\\u([\dAa-f]{4}))?/i
     VALID_STRING = /\A(?:[^\\]|#{ESCAPES}|#{UTF_8})*\z/o
 
-    def emit_block(ts, te, value)
-      line_incr = value.count("\n")
+    def emit_block(value)
       value = trim_whitespace(value)
-      @line += line_incr
-      emit_string(ts, te, value)
+      emit_string(value)
     end
 
-    def emit_string(ts, te, value)
+    def emit_string(value)
       if !value.valid_encoding? || !value.match?(VALID_STRING)
-        emit(:BAD_UNICODE_ESCAPE, ts, te, value)
+        emit(:BAD_UNICODE_ESCAPE, value)
       else
         replace_escaped_characters_in_place(value)
 
         if !value.valid_encoding?
-          emit(:BAD_UNICODE_ESCAPE, ts, te, value)
+          emit(:BAD_UNICODE_ESCAPE, value)
         else
-          emit(:STRING, ts, te, value)
+          emit(:STRING, value)
         end
       end
     end
