@@ -64,7 +64,7 @@ module Fold
 end
 
 ast = TinyGQL.parse "{ neat { cool } }"
-p ast.fold(Fold, [])
+p ast.fold(Fold, []) # => ["neat", "cool"]
 ```
 
 ## LICENSE:
