@@ -55,16 +55,16 @@ ast.accept(Viz.new)
 If you would like a functional way to collect data from the tree, use the `Fold` module:
 
 ```ruby
-class Fold
-  include TinyGQL::Visitors::Fold
+module Fold
+  extend TinyGQL::Visitors::Fold
 
-  def handle_field obj, seed
-    super + [obj.name]
+  def self.handle_field obj, seed
+    super(obj, seed + [obj.name])
   end
 end
 
-ast = TinyGQL.parse "{ neat cool }"
-p ast.fold(Fold.new, []) # => ["neat", "cool"]
+ast = TinyGQL.parse "{ neat { cool } }"
+p ast.fold(Fold, [])
 ```
 
 ## LICENSE:
