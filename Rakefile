@@ -11,11 +11,12 @@ task :test => "lib/tinygql/nodes.rb"
 
 task default: :test
 
-file "lib/tinygql/nodes.rb" => "lib/tinygql/nodes.yml" do |t|
+def extract_nodes source
   require "psych"
   require "erb"
-  info = Psych.load_file t.source
-  Node = Struct.new(:name, :parent, :fields) do
+
+  info = Psych.load_file source
+  node = Struct.new(:name, :parent, :fields) do
     def has_children?; fields.length > 0; end
 
     def human_name
@@ -49,7 +50,8 @@ file "lib/tinygql/nodes.rb" => "lib/tinygql/nodes.yml" do |t|
       buf.join("; ")
     end
   end
-  Field = Struct.new :_name, :type do
+
+  field = Struct.new :_name, :type do
     def name
       _name.sub(/\?$/, '')
     end
@@ -58,16 +60,20 @@ file "lib/tinygql/nodes.rb" => "lib/tinygql/nodes.yml" do |t|
       _name.end_with?("?")
     end
   end
-  nodes = info["nodes"].map { |n|
-    Node.new(n["name"], n["parent"] || "Node", (n["fields"] || []).map { |f|
+  info["nodes"].map { |n|
+    node.new(n["name"], n["parent"] || "Node", (n["fields"] || []).map { |f|
       name = f
       type = "node"
       if Hash === f
         (name, type) = *f.to_a.first
       end
-      Field.new name, type
+      field.new name, type
     })
   }
+end
+
+file "lib/tinygql/nodes.rb" => "lib/tinygql/nodes.yml" do |t|
+  nodes = extract_nodes t.source
   erb = ERB.new File.read("lib/tinygql/nodes.rb.erb"), trim_mode: "-"
   File.binwrite t.name, erb.result(binding)
 end
