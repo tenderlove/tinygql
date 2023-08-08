@@ -65,7 +65,7 @@ module TinyGQL
     LIT_NAME_LUT = Literals.constants.each_with_object({}) { |n, o|
       key = Literals.const_get(n)
       key = key.is_a?(Regexp) ? key.source.gsub(/(\\b|\\)/, '') : key
-      o[key] = n
+      o[key] = [n, key]
     }
 
     LIT = Regexp.union(Literals.constants.map { |n| Literals.const_get(n) })
@@ -98,7 +98,7 @@ module TinyGQL
       case
       when str = @scan.scan(FLOAT)         then emit(:FLOAT, str)
       when str = @scan.scan(INT)           then emit(:INT, str)
-      when str = @scan.scan(LIT)           then emit(LIT_NAME_LUT[str], -str)
+      when str = @scan.scan(LIT)           then LIT_NAME_LUT[str]
       when str = @scan.scan(IDENTIFIER)    then emit(:IDENTIFIER, str)
       when str = @scan.scan(BLOCK_STRING)  then emit_block(str.gsub(/\A#{BLOCK_QUOTE}|#{BLOCK_QUOTE}\z/, ''))
       when str = @scan.scan(QUOTED_STRING) then emit_string(str.gsub(/\A"|"\z/, ''))
