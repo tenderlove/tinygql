@@ -103,7 +103,7 @@ module TinyGQL
       when str = @scan.scan(BLOCK_STRING)  then emit_block(str.gsub(/\A#{BLOCK_QUOTE}|#{BLOCK_QUOTE}\z/, ''))
       when str = @scan.scan(QUOTED_STRING) then emit_string(str.gsub(/\A"|"\z/, ''))
       when str = @scan.scan(COMMENT)       then record_comment(str)
-      when str = @scan.scan(NEWLINE)
+      when @scan.skip(NEWLINE)
         next_token
       when @scan.scan(BLANK)
         next_token
