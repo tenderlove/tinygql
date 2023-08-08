@@ -35,9 +35,14 @@ module TinyG
     def operation_definition
       case @token.first
       when :QUERY, :MUTATION, :SUBSCRIPTION
+        type = self.operation_type
+        ident = if at?(:IDENTIFIER)
+          name
+        end
+
         Nodes::OperationDefinition.new(
-          operation_type,
-          name,
+          type,
+          ident,
           variable_definitions,
           directives,
           selection_set
@@ -70,6 +75,14 @@ module TinyG
 
       aliaz = nil
       name = nil
+
+      if at?(:IDENTIFIER)
+        aliaz = alias_or_name
+        name = self.name
+      else
+        aliaz = nil
+        name = alias_or_name
+      end
 
       if at?(:COLON)
         expect_token(:COLON)

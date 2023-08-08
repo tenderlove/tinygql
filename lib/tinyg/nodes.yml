@@ -9,7 +9,7 @@ nodes:
     - type: literal
     - name?: literal
     - variable_definitions?: list
-    - directives: list
+    - directives?: list
     - selection_set: list
 
   - name: Variable
@@ -45,11 +45,11 @@ nodes:
 
   - name: Field
     fields:
-    - aliaz
-    - name
-    - arguments: list
-    - directives: list
-    - selection_set: list
+      - aliaz?: literal
+      - name: literal
+      - arguments?: list
+      - directives?: list
+      - selection_set?: list
 
   - name: ObjectField
     fields:

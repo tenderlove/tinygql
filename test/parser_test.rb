@@ -22,5 +22,36 @@ eod
 
       assert_equal(["123", "456"], ast.find_all { |node| node.int_value? }.map(&:value))
     end
+
+    def test_has_things
+      doc = <<-eod
+mutation {
+  likeStory(storyID: 12345) {
+    story {
+      likeCount
+    }
+  }
+}
+eod
+      parser = Parser.new doc
+      ast = parser.parse
+      assert_equal ["likeStory", "story", "likeCount"], ast.find_all(&:field?).map(&:name)
+    end
+
+    def test_field_alias
+      doc = <<-eod
+mutation {
+  a likeStory(storyID: 12345) {
+    b story {
+      c likeCount
+    }
+  }
+}
+eod
+      parser = Parser.new doc
+      ast = parser.parse
+      assert_equal ["likeStory", "story", "likeCount"], ast.find_all(&:field?).map(&:name)
+      assert_equal ["a", "b", "c"], ast.find_all(&:field?).map(&:aliaz)
+    end
   end
 end
