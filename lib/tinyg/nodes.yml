@@ -1,0 +1,87 @@
+---
+nodes:
+  - name: Document
+    fields:
+      - definitions: list
+
+  - name: OperationDefinition
+    fields:
+    - type: literal
+    - name?: literal
+    - variable_definitions?: list
+    - directives: list
+    - selection_set: list
+
+  - name: Variable
+    fields:
+      - name: literal
+
+  - name: NamedType
+    fields:
+      - name: literal
+
+  - name: NotNullType
+    fields:
+    - type
+
+  - name: ListType
+    fields:
+    - type
+
+  - name: VariableDefinition
+    fields:
+    - variable
+    - type
+    - default_value?
+
+  - name: Value
+    fields:
+      - value: literal
+
+  - name: Argument
+    fields:
+      - name: literal
+      - value
+
+  - name: Field
+    fields:
+    - aliaz
+    - name
+    - arguments: list
+    - directives: list
+    - selection_set: list
+
+  - name: ObjectField
+    fields:
+      - name: literal
+      - value
+
+  - name: IntValue
+    parent: Value
+
+  - name: FloatValue
+    parent: Value
+
+  - name: StringValue
+    parent: Value
+
+  - name: BooleanValue
+    parent: Value
+
+  - name: "NullValue"
+    parent: Value
+
+  - name: EnumValue
+    parent: Value
+
+  - name: ListValue
+    parent: Value
+
+  - name: ObjectValue
+    fields:
+      - values: list
+
+  - name: Directive
+    fields:
+      - name: literal
+      - arguments: list

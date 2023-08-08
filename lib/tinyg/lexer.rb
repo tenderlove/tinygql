@@ -124,7 +124,7 @@ module TinyG
 
     # Replace any escaped unicode or whitespace with the _actual_ characters
     # To avoid allocating more strings, this modifies the string passed into it
-    def self.replace_escaped_characters_in_place(raw_string)
+    def replace_escaped_characters_in_place(raw_string)
       raw_string.gsub!(ESCAPES, ESCAPES_REPLACE)
       raw_string.gsub!(UTF_8) do |_matched_str|
         codepoint_1 = ($1 || $2).to_i(16)
@@ -183,16 +183,16 @@ module TinyG
       meta[:line] += line_incr
     end
 
-    def self.emit_string(ts, te, meta, value)
+    def emit_string(ts, te, value)
       if !value.valid_encoding? || !value.match?(VALID_STRING)
-        emit(:BAD_UNICODE_ESCAPE, ts, te, meta, value)
+        emit(:BAD_UNICODE_ESCAPE, ts, te, value)
       else
         replace_escaped_characters_in_place(value)
 
         if !value.valid_encoding?
-          emit(:BAD_UNICODE_ESCAPE, ts, te, meta, value)
+          emit(:BAD_UNICODE_ESCAPE, ts, te, value)
         else
-          emit(:STRING, ts, te, meta, value)
+          emit(:STRING, ts, te, value)
         end
       end
     end
