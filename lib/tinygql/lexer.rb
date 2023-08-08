@@ -68,11 +68,6 @@ module TinyGQL
       o[key] = n
     }
 
-    SOURCE_CHARACTER = /[\u0009\u000A\u000D\u0020-\uFFFF]/
-    STRING_CHARACTER = %r{
-      [\u0009\u000A\u000D\u0020-\uFFFF]
-    }x
-
     LIT = Regexp.union(Literals.constants.map { |n| Literals.const_get(n) })
 
     QUOTED_STRING = %r{#{QUOTE} (?:#{STRING_CHAR})* #{QUOTE}}x
