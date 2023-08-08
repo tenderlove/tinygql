@@ -103,10 +103,8 @@ module TinyGQL
       when str = @scan.scan(BLOCK_STRING)  then emit_block(str.gsub(/\A#{BLOCK_QUOTE}|#{BLOCK_QUOTE}\z/, ''))
       when str = @scan.scan(QUOTED_STRING) then emit_string(str.gsub(/\A"|"\z/, ''))
       when str = @scan.scan(COMMENT)       then record_comment(str)
-      when @scan.skip(NEWLINE)
-        next_token
-      when @scan.scan(BLANK)
-        next_token
+      when @scan.skip(NEWLINE)             then next_token
+      when @scan.skip(BLANK)               then next_token
       when str = @scan.scan(UNKNOWN_CHAR) then emit(:UNKNOWN_CHAR, str)
       else
         # This should never happen since `UNKNOWN_CHAR` ensures we make progress
