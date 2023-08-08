@@ -54,17 +54,9 @@ module TinyGQL
       case @token.first
       when :QUERY, :MUTATION, :SUBSCRIPTION
         type = self.operation_type
-        ident = if at?(:IDENTIFIER)
-          name
-        end
-
-        variable_definitions = if at?(:LPAREN)
-          self.variable_definitions
-        end
-
-        directives = if at?(:DIR_SIGN)
-          self.directives
-        end
+        ident                = if at?(:IDENTIFIER); name; end
+        variable_definitions = if at?(:LPAREN); self.variable_definitions; end
+        directives           = if at?(:DIR_SIGN); self.directives; end
       end
 
       Nodes::OperationDefinition.new(
