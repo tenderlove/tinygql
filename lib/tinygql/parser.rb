@@ -5,12 +5,14 @@ module TinyGQL
   class Parser
     def initialize doc
       @lexer = Lexer.new doc
+      @token = @lexer.next_token
     end
 
     def parse
-      @token = @lexer.next_token
       document
     end
+
+    private
 
     def document
       Nodes::Document.new definition_list
@@ -29,7 +31,7 @@ module TinyGQL
     end
 
     def executable_definition
-      if @token.first == :FRAGMENT
+      if at?(:FRAGMENT)
         fragment_definition
       else
         operation_definition
@@ -56,22 +58,22 @@ module TinyGQL
           name
         end
 
-        Nodes::OperationDefinition.new(
-          type,
-          ident,
-          variable_definitions,
-          directives,
-          selection_set
-        )
-      else
-        Nodes::OperationDefinition.new(
-          nil,
-          nil,
-          nil,
-          nil,
-          selection_set
-        )
+        variable_definitions = if at?(:LPAREN)
+          self.variable_definitions
+        end
+
+        directives = if at?(:DIR_SIGN)
+          self.directives
+        end
       end
+
+      Nodes::OperationDefinition.new(
+        type,
+        ident,
+        variable_definitions,
+        directives,
+        selection_set
+      )
     end
 
     def selection_set
@@ -132,38 +134,19 @@ module TinyGQL
     end
 
     def field
-      alias_or_name = self.name
+      name = self.name
 
       aliaz = nil
-      name = nil
-
-      if at?(:IDENTIFIER)
-        aliaz = alias_or_name
-        name = self.name
-      else
-        aliaz = nil
-        name = alias_or_name
-      end
 
       if at?(:COLON)
         expect_token(:COLON)
-        aliaz = alias_or_name
+        aliaz = name
         name = self.name
       end
 
-      arguments = if at?(:LPAREN)
-        self.arguments
-      else
-        nil
-      end
-
-      directives = self.directives
-
-      selection_set = if at?(:LCURLY)
-        self.selection_set
-      else
-        nil
-      end
+      arguments = if at?(:LPAREN); self.arguments; end
+      directives = if at?(:DIR_SIGN); self.directives; end
+      selection_set = if at?(:LCURLY); self.selection_set; end
 
       Nodes::Field.new(aliaz, name, arguments, directives, selection_set)
     end
@@ -173,8 +156,6 @@ module TinyGQL
     end
 
     def directives
-      return unless at?(:DIR_SIGN)
-
       list = []
       while at?(:DIR_SIGN)
         list << directive
@@ -209,10 +190,9 @@ module TinyGQL
     end
 
     def variable_definitions
-      return unless @token.first == :LPAREN
-      accept_token
+      expect_token(:LPAREN)
       defs = []
-      while @token.first != :RPAREN
+      while !at?(:RPAREN)
         defs << variable_definition
       end
       expect_token(:RPAREN)
@@ -221,16 +201,17 @@ module TinyGQL
 
     def variable_definition
       var = variable
-      return unless var
       expect_token(:COLON)
-      default_value
+      type = self.type
+      default_value = if at?(:EQUALS)
+        self.default_value
+      end
+
       Nodes::VariableDefinition.new(var, type, default_value)
     end
 
     def default_value
-      return unless at?(:EQUALS)
-      accept_token
-
+      expect_token(:EQUALS)
       value
     end
 
@@ -304,7 +285,7 @@ module TinyGQL
       end
 
       if at?(:BANG)
-        NotNullType.new type
+        Nodes::NotNullType.new type
         expect_token(:BANG)
       end
       type

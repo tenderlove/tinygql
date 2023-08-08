@@ -41,9 +41,9 @@ eod
     def test_field_alias
       doc = <<-eod
 mutation {
-  a likeStory(storyID: 12345) {
-    b story {
-      c likeCount
+  a: likeStory(storyID: 12345) {
+    b: story {
+      c: likeCount
     }
   }
 }
