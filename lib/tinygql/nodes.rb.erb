@@ -28,6 +28,10 @@ module TinyGQL
         viz.handle_<%= node.human_name %> self
       end
 
+      def fold viz, seed
+        viz.handle_<%= node.human_name %> self, seed
+      end
+
       def <%= node.human_name %>? = true
 
       <%- if node.has_children? -%>

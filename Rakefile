@@ -7,7 +7,9 @@ Rake::TestTask.new(:test) do |t|
   t.test_files = FileList["test/**/*_test.rb"]
 end
 
-task :test => "lib/tinygql/nodes.rb"
+FILES = [ "lib/tinygql/nodes.rb", "lib/tinygql/visitors.rb" ]
+
+task :test => FILES
 
 task default: :test
 
@@ -56,6 +58,10 @@ def extract_nodes source
       _name.sub(/\?$/, '')
     end
 
+    def list?; type == "list"; end
+    def node?; type == "node"; end
+    def visitable?; list? || node?; end
+
     def nullable?
       _name.end_with?("?")
     end
@@ -77,3 +83,12 @@ file "lib/tinygql/nodes.rb" => "lib/tinygql/nodes.yml" do |t|
   erb = ERB.new File.read("lib/tinygql/nodes.rb.erb"), trim_mode: "-"
   File.binwrite t.name, erb.result(binding)
 end
+
+file "lib/tinygql/visitors.rb" => "lib/tinygql/nodes.yml" do |t|
+  nodes = extract_nodes t.source
+  erb = ERB.new File.read("lib/tinygql/visitors.rb.erb"), trim_mode: "-"
+  File.binwrite t.name, erb.result(binding)
+end
+
+require "rake/clean"
+CLOBBER.append(FILES)
