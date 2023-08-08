@@ -85,3 +85,25 @@ nodes:
     fields:
       - name: literal
       - arguments: list
+
+  - name: TypeCondition
+    fields:
+      - named_type
+
+  - name: InlineFragment
+    fields:
+      - type_condition?
+      - directives?: list
+      - selection_set: list
+
+  - name: FragmentSpread
+    fields:
+      - fragment_name
+      - directives?: list
+
+  - name: FragmentDefinition
+    fields:
+      - fragment_name
+      - type_condition
+      - directives?: list
+      - selection_set: list

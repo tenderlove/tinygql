@@ -68,10 +68,15 @@ module TinyG
       o[key] = n
     }
 
+    SOURCE_CHARACTER = /[\u0009\u000A\u000D\u0020-\uFFFF]/
+    STRING_CHARACTER = %r{
+      [\u0009\u000A\u000D\u0020-\uFFFF]
+    }x
+
     LIT = Regexp.union(Literals.constants.map { |n| Literals.const_get(n) })
 
     QUOTED_STRING = %r{#{QUOTE} (?:#{STRING_CHAR})* #{QUOTE}}x
-      BLOCK_STRING = %r{
+    BLOCK_STRING = %r{
         #{BLOCK_QUOTE}
     (?: [^"\\]               |  # Any characters that aren't a quote or slash
     (?<!") ["]{1,2} (?!") |  # Any quotes that don't have quotes next to them
@@ -90,7 +95,7 @@ module TinyG
       raise unless string.valid_encoding?
 
       @scan = StringScanner.new string
-      @line = 0
+      @line = 1
     end
 
     def next_token
@@ -103,7 +108,7 @@ module TinyG
       when str = @scan.scan(INT)           then emit(:INT, pos, @scan.pos, str)
       when str = @scan.scan(LIT)           then emit(LIT_NAME_LUT[str], pos, @scan.pos, -str)
       when str = @scan.scan(IDENTIFIER)    then emit(:IDENTIFIER, pos, @scan.pos, str)
-      when str = @scan.scan(BLOCK_STRING)  then emit_block(pos, @scan.pos, str.gsub(/^#{BLOCK_QUOTE}|#{BLOCK_QUOTE}$/, ''))
+      when str = @scan.scan(BLOCK_STRING)  then emit_block(pos, @scan.pos, str.gsub(/\A#{BLOCK_QUOTE}|#{BLOCK_QUOTE}\z/, ''))
       when str = @scan.scan(QUOTED_STRING) then emit_string(pos, @scan.pos, str.gsub(/^"|"$/, ''))
       when str = @scan.scan(COMMENT)       then record_comment(pos, @scan.pos, str)
       when str = @scan.scan(NEWLINE)
@@ -148,18 +153,8 @@ module TinyG
       nil
     end
 
-    def self.record_comment(ts, te, meta, str)
-      token = [
-        :COMMENT,
-        meta[:line],
-        meta[:col],
-        str,
-        meta[:previous_token],
-      ]
-
-      meta[:previous_token] = token
-
-      meta[:col] += te - ts
+    def record_comment(ts, te, str)
+      next_token
     end
 
     ESCAPES = /\\["\\\/bfnrt]/
@@ -176,11 +171,11 @@ module TinyG
     UTF_8 = /\\u(?:([\dAa-f]{4})|\{([\da-f]{4,})\})(?:\\u([\dAa-f]{4}))?/i
     VALID_STRING = /\A(?:[^\\]|#{ESCAPES}|#{UTF_8})*\z/o
 
-    def self.emit_block(ts, te, meta, value)
+    def emit_block(ts, te, value)
       line_incr = value.count("\n")
-      value = GraphQL::Language::BlockString.trim_whitespace(value)
-      emit_string(ts, te, meta, value)
-      meta[:line] += line_incr
+      value = trim_whitespace(value)
+      @line += line_incr
+      emit_string(ts, te, value)
     end
 
     def emit_string(ts, te, value)
@@ -195,6 +190,60 @@ module TinyG
           emit(:STRING, ts, te, value)
         end
       end
+    end
+
+    def trim_whitespace(str)
+      # Early return for the most common cases:
+      if str == ""
+        return "".dup
+      elsif !(has_newline = str.include?("\n")) && !(str.start_with?(" "))
+        return str
+      end
+
+      lines = has_newline ? str.split("\n") : [str]
+      common_indent = nil
+
+      # find the common whitespace
+      lines.each_with_index do |line, idx|
+        if idx == 0
+          next
+        end
+        line_length = line.size
+        line_indent = if line.match?(/\A  [^ ]/)
+          2
+        elsif line.match?(/\A    [^ ]/)
+          4
+        elsif line.match?(/\A[^ ]/)
+          0
+        else
+          line[/\A */].size
+        end
+        if line_indent < line_length && (common_indent.nil? || line_indent < common_indent)
+          common_indent = line_indent
+        end
+      end
+
+      # Remove the common whitespace
+      if common_indent && common_indent > 0
+        lines.each_with_index do |line, idx|
+          if idx == 0
+            next
+          else
+            line.slice!(0, common_indent)
+          end
+        end
+      end
+
+      # Remove leading & trailing blank lines
+      while lines.size > 0 && lines[0].empty?
+        lines.shift
+      end
+      while lines.size > 0 && lines[-1].empty?
+        lines.pop
+      end
+
+      # Rebuild the string
+      lines.size > 1 ? lines.join("\n") : (lines.first || "".dup)
     end
   end
 end

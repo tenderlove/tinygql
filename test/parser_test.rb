@@ -53,5 +53,22 @@ eod
       assert_equal ["likeStory", "story", "likeCount"], ast.find_all(&:field?).map(&:name)
       assert_equal ["a", "b", "c"], ast.find_all(&:field?).map(&:aliaz)
     end
+
+    def test_shorthand
+      doc = <<-eod
+{
+  field
+}
+eod
+      parser = Parser.new doc
+      ast = parser.parse
+      assert_predicate ast.children.first, :operation_definition?
+      assert_equal ["field"], ast.find_all(&:field?).map(&:name)
+    end
+
+    def test_kitchen_sink
+      parser = Parser.new File.read(File.join(__dir__, "kitchen-sink.graphql"))
+      parser.parse
+    end
   end
 end

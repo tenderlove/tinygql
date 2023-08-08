@@ -25,6 +25,18 @@ module TinyG
       end
     end
 
+    def test_block_string
+      doc = <<-eos
+"""
+
+      block string uses \\"""
+
+"""
+      eos
+      lexer = Lexer.new doc
+      assert_equal :STRING, lexer.next_token.first
+    end
+
     def test_tokenize
       lexer = Lexer.new "on"
       token = lexer.next_token

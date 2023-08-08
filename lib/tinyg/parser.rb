@@ -29,7 +29,23 @@ module TinyG
     end
 
     def executable_definition
-      operation_definition || fragment_definition
+      if @token.first == :FRAGMENT
+        fragment_definition
+      else
+        operation_definition
+      end
+    end
+
+    def fragment_definition
+      expect_token :FRAGMENT
+      raise "unexpected token" if at?(:ON)
+      name = self.name
+      tc = self.type_condition
+      directives = if at?(:DIR_SIGN)
+        self.directives
+      end
+
+      Nodes::FragmentDefinition.new(name, tc, directives, selection_set)
     end
 
     def operation_definition
@@ -48,7 +64,13 @@ module TinyG
           selection_set
         )
       else
-        selection_set
+        Nodes::OperationDefinition.new(
+          nil,
+          nil,
+          nil,
+          nil,
+          selection_set
+        )
       end
     end
 
@@ -63,11 +85,50 @@ module TinyG
     end
 
     def selection
-      case @token.first
-      when :IDENTIFIER then field
+      if at?(:ELLIPSIS)
+        selection_fragment
       else
-        raise @token.first
+        field
       end
+    end
+
+    def selection_fragment
+      expect_token :ELLIPSIS
+
+      case @token.first
+      when :ON, :DIR_SIGN, :LCURLY then inline_fragment
+      when :IDENTIFIER then fragment_spread
+      else
+        p @token
+        p @lexer
+        raise
+      end
+    end
+
+    def fragment_spread
+      name = self.name
+      directives = if at?(:DIR_SIGN)
+        self.directives
+      end
+
+      Nodes::FragmentSpread.new(name, directives)
+    end
+
+    def inline_fragment
+      type_condition = if at?(:ON)
+        self.type_condition
+      end
+
+      directives = if at?(:DIR_SIGN)
+        self.directives
+      end
+
+      Nodes::InlineFragment.new(type_condition, directives, selection_set)
+    end
+
+    def type_condition
+      expect_token :ON
+      Nodes::TypeCondition.new(named_type)
     end
 
     def field
@@ -123,6 +184,11 @@ module TinyG
 
     def directive
       expect_token(:DIR_SIGN)
+      name = self.name
+      arguments = if at?(:LPAREN)
+        self.arguments
+      end
+
       Nodes::Directive.new(name, arguments)
     end
 
@@ -178,7 +244,9 @@ module TinyG
       when :IDENTIFIER then enum_value
       when :LBRACKET then list_value
       when :LCURLY then object_value
+      when :VAR_SIGN then variable
       else
+        p @token
         raise @token.first
       end
     end
@@ -260,7 +328,11 @@ module TinyG
     end
 
     def name
-      expect_token(:IDENTIFIER).last
+      case @token.first
+      when :IDENTIFIER, :INPUT, :QUERY then accept_token.last
+      else
+        expect_token(:IDENTIFIER).last
+      end
     end
 
     private
@@ -274,6 +346,7 @@ module TinyG
     def expect_token tok
       unless at?(tok)
         p @token
+        p @lexer
         raise "Expected token #{tok}, actual: #{@token.first}"
       end
       accept_token
