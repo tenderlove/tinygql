@@ -1,6 +1,6 @@
 ENV["MT_NO_PLUGINS"] = "1"
 
-require "tinyg/parser"
+require "tinygql/parser"
 require "minitest/autorun"
 
 Thread.new do
@@ -8,7 +8,7 @@ Thread.new do
   Process.kill "QUIT", $$
 end
 
-module TinyG
+module TinyGQL
   class Test < Minitest::Test
   end
 end

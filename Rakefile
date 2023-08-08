@@ -6,11 +6,11 @@ Rake::TestTask.new(:test) do |t|
   t.test_files = FileList["test/**/*_test.rb"]
 end
 
-task :test => "lib/tinyg/nodes.rb"
+task :test => "lib/tinygql/nodes.rb"
 
 task default: :test
 
-file "lib/tinyg/nodes.rb" => "lib/tinyg/nodes.yml" do |t|
+file "lib/tinygql/nodes.rb" => "lib/tinygql/nodes.yml" do |t|
   require "psych"
   require "erb"
   info = Psych.load_file t.source
@@ -67,6 +67,6 @@ file "lib/tinyg/nodes.rb" => "lib/tinyg/nodes.yml" do |t|
       Field.new name, type
     })
   }
-  erb = ERB.new File.read("lib/tinyg/nodes.rb.erb"), trim_mode: "-"
+  erb = ERB.new File.read("lib/tinygql/nodes.rb.erb"), trim_mode: "-"
   File.binwrite t.name, erb.result(binding)
 end

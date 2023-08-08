@@ -1,7 +1,7 @@
-require "tinyg/lexer"
-require "tinyg/nodes"
+require "tinygql/lexer"
+require "tinygql/nodes"
 
-module TinyG
+module TinyGQL
   class Parser
     def initialize doc
       @lexer = Lexer.new doc

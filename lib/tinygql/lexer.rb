@@ -2,7 +2,7 @@
 
 require "strscan"
 
-module TinyG
+module TinyGQL
   class Lexer
     IDENTIFIER =    /[_A-Za-z][_0-9A-Za-z]*/
     NEWLINE =       /[\c\r\n]/

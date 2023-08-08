@@ -1,6 +1,6 @@
 require "helper"
 
-module TinyG
+module TinyGQL
   class ParserTest < Test
     def test_multi_tok
       doc = <<-eod

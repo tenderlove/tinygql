@@ -1,6 +1,6 @@
 require "helper"
 
-module TinyG
+module TinyGQL
   class LexerTest < Test
     PUNC_LUT = {"!"=>[:BANG, "!"],
                 "$"=>[:VAR_SIGN, "$"],

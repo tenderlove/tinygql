@@ -1,4 +1,4 @@
-module TinyG
+module TinyGQL
   module Nodes
     class Node
     end
