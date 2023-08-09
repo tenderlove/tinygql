@@ -3,9 +3,11 @@ require "tinygql/nodes"
 
 module TinyGQL
   class Parser
+    attr_reader :token_name
+
     def initialize doc
       @lexer = Lexer.new doc
-      @token = @lexer.next_token
+      @token_name, @token_value = @lexer.next_token
     end
 
     def parse
@@ -20,14 +22,14 @@ module TinyGQL
 
     def definition_list
       list = []
-      while @token
+      while token_name
         list << definition
       end
       list
     end
 
     def definition
-      case @token.first
+      case token_name
       when :FRAGMENT, :QUERY, :MUTATION, :SUBSCRIPTION, :LCURLY
         executable_definition
       when :EXTEND
@@ -39,10 +41,10 @@ module TinyGQL
 
     def type_system_extension
       expect_token :EXTEND
-      case @token.first
+      case token_name
       when :TYPE then object_type_extension
       else
-        raise NotImplementedError, "unimplemented type system extension #{@token.first}"
+        raise NotImplementedError, "unimplemented type system extension #{token_name}"
       end
     end
 
@@ -56,7 +58,7 @@ module TinyGQL
     end
 
     def type_system_definition
-      case @token.first
+      case token_name
       when :SCHEMA then schema_definition
       when :DIRECTIVE then directive_defintion(nil)
       else
@@ -84,9 +86,9 @@ module TinyGQL
     end
 
     def directive_location
-      case @token.last
+      case token_name
       when "QUERY", "MUTATION", "SUBSCRIPTION", "FIELD", "FRAGMENT_DEFINITION", "FRAGMENT_SPREAD", "INLINE_FRAGMENT"
-        Nodes::ExecutableDirectiveLocation.new(accept_token.last)
+        Nodes::ExecutableDirectiveLocation.new(accept_token)
       when "SCHEMA",
         "SCALAR",
         "OBJECT",
@@ -98,14 +100,14 @@ module TinyGQL
         "ENUM_VALUE",
         "INPUT_OBJECT",
         "INPUT_FIELD_DEFINITION"
-        Nodes::TypeSystemDirectiveLocation.new(accept_token.last)
+        Nodes::TypeSystemDirectiveLocation.new(accept_token)
       else
         expect_token(:IDENTIFIER)
       end
     end
 
     def type_definition desc
-      case @token.first
+      case token_name
       when :TYPE then object_type_definition(desc)
       when :INTERFACE then interface_type_definition(desc)
       when :UNION then union_type_definition(desc)
@@ -113,7 +115,7 @@ module TinyGQL
       when :ENUM then enum_type_definition(desc)
       when :INPUT then input_object_type_definition(desc)
       else
-        p @token
+        p token_name
         raise
       end
     end
@@ -141,7 +143,7 @@ module TinyGQL
       name = self.name
       directives = if at?(:DIR_SIGN); self.directives; end
       enum_values_definition = if at?(:LCURLY); self.enum_values_definition; end
-      Nodes::EnumTypeDefinition.new(desc, name, enum_values_definition)
+      Nodes::EnumTypeDefinition.new(desc, name, directives, enum_values_definition)
     end
 
     def enum_values_definition
@@ -155,7 +157,7 @@ module TinyGQL
     end
 
     def enum_value_definition
-      description = if at?(:STRING); accept_token.last; end
+      description = if at?(:STRING); accept_token; end
       enum_value = self.enum_value
       directives = if at?(:DIR_SIGN); self.directives; end
       Nodes::EnumValueDefinition.new(description, enum_value, directives)
@@ -215,7 +217,7 @@ module TinyGQL
     end
 
     def field_definition
-      description = if at?(:STRING); accept_token.last; end
+      description = if at?(:STRING); accept_token; end
       name = self.name
       arguments_definition = if at?(:LPAREN); self.arguments_definition; end
       expect_token :COLON
@@ -236,7 +238,7 @@ module TinyGQL
     end
 
     def input_value_definition
-      description = if at?(:STRING); accept_token.last; end
+      description = if at?(:STRING); accept_token; end
       name = self.name
       expect_token :COLON
       type = self.type
@@ -296,7 +298,7 @@ module TinyGQL
     end
 
     def operation_definition
-      case @token.first
+      case token_name
       when :QUERY, :MUTATION, :SUBSCRIPTION
         type = self.operation_type
         ident                = if at?(:IDENTIFIER); name; end
@@ -334,11 +336,11 @@ module TinyGQL
     def selection_fragment
       expect_token :ELLIPSIS
 
-      case @token.first
+      case token_name
       when :ON, :DIR_SIGN, :LCURLY then inline_fragment
       when :IDENTIFIER then fragment_spread
       else
-        p @token
+        p token_name
         p @lexer
         raise
       end
@@ -389,7 +391,7 @@ module TinyGQL
     end
 
     def operation_type
-      expect_tokens([:QUERY, :MUTATION, :SUBSCRIPTION]).last
+      expect_tokens([:QUERY, :MUTATION, :SUBSCRIPTION])
     end
 
     def directives
@@ -453,7 +455,7 @@ module TinyGQL
     end
 
     def value
-      case @token.first
+      case token_name
       when :INT then int_value
       when :FLOAT then float_value
       when :STRING then string_value
@@ -464,8 +466,8 @@ module TinyGQL
       when :LCURLY then object_value
       when :VAR_SIGN then variable
       else
-        p @token
-        raise @token.first
+        p token_name
+        raise token_name
       end
     end
 
@@ -492,31 +494,31 @@ module TinyGQL
     end
 
     def enum_value
-      Nodes::EnumValue.new(expect_token(:IDENTIFIER).last)
+      Nodes::EnumValue.new(expect_token(:IDENTIFIER))
     end
 
     def float_value
-      Nodes::FloatValue.new(expect_token(:FLOAT).last)
+      Nodes::FloatValue.new(expect_token(:FLOAT))
     end
 
     def int_value
-      Nodes::IntValue.new(expect_token(:INT).last)
+      Nodes::IntValue.new(expect_token(:INT))
     end
 
     def string_value
-      Nodes::StringValue.new(expect_token(:STRING).last)
+      Nodes::StringValue.new(expect_token(:STRING))
     end
 
     def boolean_value
-      Nodes::BooleanValue.new(expect_tokens([:TRUE, :FALSE]).last)
+      Nodes::BooleanValue.new(expect_tokens([:TRUE, :FALSE]))
     end
 
     def null_value
-      Nodes::NullValue.new(expect_token(:NULL).last)
+      Nodes::NullValue.new(expect_token(:NULL))
     end
 
     def type
-      type = case @token.first
+      type = case token_name
       when :IDENTIFIER then named_type
       when :LBRACKET then list_type
       end
@@ -546,40 +548,40 @@ module TinyGQL
     end
 
     def name
-      case @token.first
-      when :IDENTIFIER, :INPUT, :QUERY then accept_token.last
+      case token_name
+      when :IDENTIFIER, :INPUT, :QUERY then accept_token
       else
-        expect_token(:IDENTIFIER).last
+        expect_token(:IDENTIFIER)
       end
     end
 
     private
 
     def accept_token
-      token = @token
-      @token = @lexer.next_token
-      token
+      token_value = @token_value
+      @token_name, @token_value = @lexer.next_token
+      token_value
     end
 
     def expect_token tok
       unless at?(tok)
-        p @token
+        p token_name
         p @lexer
-        raise "Expected token #{tok}, actual: #{@token.first}"
+        raise "Expected token #{tok}, actual: #{token_name}"
       end
       accept_token
     end
 
     def expect_tokens toks
       unless toks.any? { |tok| at?(tok) }
-        p @token
-        raise "Expected token #{tok}, actual: #{@token.first}"
+        p token_name
+        raise "Expected token #{tok}, actual: #{token_name}"
       end
       accept_token
     end
 
     def at? tok
-      @token && @token.first == tok
+      token_name == tok
     end
   end
 end

@@ -172,6 +172,7 @@ nodes:
     fields:
       - description?: literal
       - name: literal
+      - directives?: list
       - enum_value_definition?: list
 
   - name: InputObjectTypeDefinition
