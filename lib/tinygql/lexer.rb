@@ -5,8 +5,7 @@ require "strscan"
 module TinyGQL
   class Lexer
     IDENTIFIER =    /[_A-Za-z][_0-9A-Za-z]*/
-    NEWLINE =       /[\c\r\n]/
-    BLANK   =       /[, \t]+/
+    BLANK   =       /[, \c\r\n\t]+/
     COMMENT =       /#[^\n\r]*/
     INT =           /[-]?(?:[0]|[1-9][0-9]*)/
     FLOAT_DECIMAL = /[.][0-9]+/
@@ -94,6 +93,10 @@ module TinyGQL
       @token_value = nil
     end
 
+    def line
+      @scan.string[0, @scan.pos].count("\n")
+    end
+
     def done?
       @scan.eos?
     end
@@ -112,7 +115,6 @@ module TinyGQL
       when str = @scan.scan(BLOCK_STRING)  then emit_block(str.gsub(/\A#{BLOCK_QUOTE}|#{BLOCK_QUOTE}\z/, ''))
       when str = @scan.scan(QUOTED_STRING) then emit_string(str.gsub(/\A"|"\z/, ''))
       when str = @scan.scan(COMMENT)       then record_comment(str)
-      when @scan.skip(NEWLINE)             then advance
       when @scan.skip(BLANK)               then advance
       when str = @scan.scan(UNKNOWN_CHAR) then emit(:UNKNOWN_CHAR, str)
       else

@@ -49,7 +49,7 @@ module TinyGQL
       case token_name
       when :TYPE then object_type_extension
       else
-        raise UnexpectedToken, "Unknown token #{token_name}"
+        expect_token :FAIL
       end
     end
 
@@ -120,7 +120,7 @@ module TinyGQL
       when :ENUM then enum_type_definition(desc)
       when :INPUT then input_object_type_definition(desc)
       else
-        raise UnexpectedToken, "Unknown token #{token_name}"
+        expect_token :FAIL
       end
     end
 
@@ -291,7 +291,7 @@ module TinyGQL
 
     def fragment_definition
       expect_token :FRAGMENT
-      raise UnexpectedToken if at?(:ON)
+      expect_token(:FAIL) if at?(:ON)
       name = self.name
       tc = self.type_condition
       directives = if at?(:DIR_SIGN)
@@ -344,7 +344,7 @@ module TinyGQL
       when :ON, :DIR_SIGN, :LCURLY then inline_fragment
       when :IDENTIFIER then fragment_spread
       else
-        raise UnexpectedToken, "Unknown token #{token_name}"
+        expect_token :FAIL
       end
     end
 
@@ -468,7 +468,7 @@ module TinyGQL
       when :LCURLY then object_value
       when :VAR_SIGN then variable
       else
-        raise UnexpectedToken, "Unknown value token #{token_name}"
+        expect_token :FAIL
       end
     end
 
@@ -550,7 +550,7 @@ module TinyGQL
 
     def name
       case token_name
-      when :IDENTIFIER, :INPUT, :QUERY then accept_token_value
+      when :IDENTIFIER, :INPUT, :QUERY, :TYPE then accept_token_value
       else
         expect_token_value(:IDENTIFIER)
       end
@@ -570,7 +570,7 @@ module TinyGQL
 
     def expect_token tok
       unless at?(tok)
-        raise UnexpectedToken, "Expected token #{tok}, actual: #{token_name}"
+        raise UnexpectedToken, "Expected token #{tok}, actual: #{token_name} line: #{@lexer.line}"
       end
       accept_token
     end
