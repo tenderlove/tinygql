@@ -107,3 +107,98 @@ nodes:
       - type_condition
       - directives?: list
       - selection_set: list
+
+  - name: RootOperationTypeDefinition
+    fields:
+      - operation_type
+      - named_type
+
+  - name: SchemaDefinition
+    fields:
+      - directives?: list
+      - root_operation_definitions: list
+
+  - name: FieldDefinition
+    fields:
+      - description?: literal
+      - name: literal
+      - arguments_definition?: list
+      - type
+      - directives?: list
+
+  - name: InputValueDefinition
+    fields:
+      - description?: literal
+      - name: literal
+      - type
+      - default_value?
+      - directives?: list
+
+  - name: ObjectTypeDefinition
+    fields:
+      - description?: literal
+      - name: literal
+      - implements_interfaces?: list
+      - directives?: list
+      - fields_definition?: list
+
+  - name: InterfaceTypeDefinition
+    fields:
+      - description?: literal
+      - name: literal
+      - directives?: list
+      - fields_definition?: list
+
+  - name: UnionTypeDefinition
+    fields:
+      - description?: literal
+      - name: literal
+      - directives?: list
+      - union_member_types?: list
+
+  - name: ScalarTypeDefinition
+    fields:
+      - description?: literal
+      - name: literal
+      - directives?: list
+
+  - name: EnumValueDefinition
+    fields:
+      - description?: literal
+      - enum_value
+      - directives?: list
+
+  - name: EnumTypeDefinition
+    fields:
+      - description?: literal
+      - name: literal
+      - enum_value_definition?: list
+
+  - name: InputObjectTypeDefinition
+    fields:
+      - description?: literal
+      - name: literal
+      - directives?: list
+      - input_fields_definition?: list
+
+  - name: ObjectTypeExtension
+    fields:
+      - name: literal
+      - implements_interfaces?: list
+      - directives?: list
+      - fields_definition?: list
+
+  - name: ExecutableDirectiveLocation
+    fields:
+      - name: literal
+
+  - name: TypeSystemDirectiveLocation
+    fields:
+      - name: literal
+
+  - name: DirectiveDefinition
+    fields:
+      - description?: literal
+      - name: literal
+      - arguments_definition?: list
+      - directive_locations: list

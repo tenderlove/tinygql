@@ -8,9 +8,8 @@ I want to target this at server side applications, so the parser eliminates some
 
 Right now this code:
 
-1. Only parses [ExecutableDefinitions](https://spec.graphql.org/June2018/#ExecutableDefinition) since the spec says "GraphQL services which only seek to provide GraphQL query execution may choose to only include ExecutableDefinition and omit the TypeSystemDefinition and TypeSystemExtension rules from Definition."
-2. Doesn't know how to execute anything.  It just gives you an AST
-3. Isn't used anywhere
+1. Doesn't know how to execute anything.  It just gives you an AST
+2. Isn't used anywhere
 
 ## Usage
 

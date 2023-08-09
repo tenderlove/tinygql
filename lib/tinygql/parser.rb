@@ -27,7 +27,252 @@ module TinyGQL
     end
 
     def definition
-      executable_definition || type_system_definition || type_system_extension
+      case @token.first
+      when :FRAGMENT, :QUERY, :MUTATION, :SUBSCRIPTION, :LCURLY
+        executable_definition
+      when :EXTEND
+        type_system_extension
+      else
+        type_system_definition
+      end
+    end
+
+    def type_system_extension
+      expect_token :EXTEND
+      case @token.first
+      when :TYPE then object_type_extension
+      else
+        raise NotImplementedError, "unimplemented type system extension #{@token.first}"
+      end
+    end
+
+    def object_type_extension
+      expect_token :TYPE
+      name = self.name
+      implements_interfaces = if at?(:IMPLEMENTS); self.implements_interfaces; end
+      directives           = if at?(:DIR_SIGN); self.directives; end
+      fields_definition   = if at?(:LCURLY); self.fields_definition; end
+      Nodes::ObjectTypeExtension.new(name, implements_interfaces, directives, fields_definition)
+    end
+
+    def type_system_definition
+      case @token.first
+      when :SCHEMA then schema_definition
+      when :DIRECTIVE then directive_defintion(nil)
+      else
+        type_definition(nil)
+      end
+    end
+
+    def directive_defintion desc
+      expect_token :DIRECTIVE
+      expect_token :DIR_SIGN
+      name = self.name
+      arguments_definition = if at?(:LPAREN); self.arguments_definition; end
+      expect_token :ON
+      directive_locations = self.directive_locations
+      Nodes::DirectiveDefinition.new(desc, name, arguments_definition, directive_locations)
+    end
+
+    def directive_locations
+      list = [directive_location]
+      while at?(:PIPE)
+        accept_token
+        list << directive_location
+      end
+      list
+    end
+
+    def directive_location
+      case @token.last
+      when "QUERY", "MUTATION", "SUBSCRIPTION", "FIELD", "FRAGMENT_DEFINITION", "FRAGMENT_SPREAD", "INLINE_FRAGMENT"
+        Nodes::ExecutableDirectiveLocation.new(accept_token.last)
+      when "SCHEMA",
+        "SCALAR",
+        "OBJECT",
+        "FIELD_DEFINITION",
+        "ARGUMENT_DEFINITION",
+        "INTERFACE",
+        "UNION",
+        "ENUM",
+        "ENUM_VALUE",
+        "INPUT_OBJECT",
+        "INPUT_FIELD_DEFINITION"
+        Nodes::TypeSystemDirectiveLocation.new(accept_token.last)
+      else
+        expect_token(:IDENTIFIER)
+      end
+    end
+
+    def type_definition desc
+      case @token.first
+      when :TYPE then object_type_definition(desc)
+      when :INTERFACE then interface_type_definition(desc)
+      when :UNION then union_type_definition(desc)
+      when :SCALAR then scalar_type_definition(desc)
+      when :ENUM then enum_type_definition(desc)
+      when :INPUT then input_object_type_definition(desc)
+      else
+        p @token
+        raise
+      end
+    end
+
+    def input_object_type_definition desc
+      expect_token :INPUT
+      name = self.name
+      directives = if at?(:DIR_SIGN); self.directives; end
+      input_fields_definition = if at?(:LCURLY); self.input_fields_definition; end
+      Nodes::InputObjectTypeDefinition.new(desc, name, directives, input_fields_definition)
+    end
+
+    def input_fields_definition
+      expect_token :LCURLY
+      list = []
+      while !at?(:RCURLY)
+        list << input_value_definition
+      end
+      expect_token :RCURLY
+      list
+    end
+
+    def enum_type_definition desc
+      expect_token :ENUM
+      name = self.name
+      directives = if at?(:DIR_SIGN); self.directives; end
+      enum_values_definition = if at?(:LCURLY); self.enum_values_definition; end
+      Nodes::EnumTypeDefinition.new(desc, name, enum_values_definition)
+    end
+
+    def enum_values_definition
+      expect_token :LCURLY
+      list = []
+      while !at?(:RCURLY)
+        list << enum_value_definition
+      end
+      expect_token :RCURLY
+      list
+    end
+
+    def enum_value_definition
+      description = if at?(:STRING); accept_token.last; end
+      enum_value = self.enum_value
+      directives = if at?(:DIR_SIGN); self.directives; end
+      Nodes::EnumValueDefinition.new(description, enum_value, directives)
+    end
+
+    def scalar_type_definition desc
+      expect_token :SCALAR
+      name = self.name
+      directives = if at?(:DIR_SIGN); self.directives; end
+      Nodes::ScalarTypeDefinition.new(desc, name, directives)
+    end
+
+    def union_type_definition desc
+      expect_token :UNION
+      name = self.name
+      directives = if at?(:DIR_SIGN); self.directives; end
+      union_member_types = if at?(:EQUALS); self.union_member_types; end
+      Nodes::UnionTypeDefinition.new(desc, name, directives, union_member_types)
+    end
+
+    def union_member_types
+      expect_token :EQUALS
+      list = [named_type]
+      while at?(:PIPE)
+        accept_token
+        list << named_type
+      end
+      list
+    end
+
+    def interface_type_definition desc
+      expect_token :INTERFACE
+      name = self.name
+      directives           = if at?(:DIR_SIGN); self.directives; end
+      fields_definition   = if at?(:LCURLY); self.fields_definition; end
+      Nodes::InterfaceTypeDefinition.new(desc, name, directives, fields_definition)
+    end
+
+    def object_type_definition desc
+      expect_token :TYPE
+      name = self.name
+      implements_interfaces = if at?(:IMPLEMENTS); self.implements_interfaces; end
+      directives           = if at?(:DIR_SIGN); self.directives; end
+      fields_definition   = if at?(:LCURLY); self.fields_definition; end
+
+      Nodes::ObjectTypeDefinition.new(desc, name, implements_interfaces, directives, fields_definition)
+    end
+
+    def fields_definition
+      expect_token :LCURLY
+      list = []
+      while !at?(:RCURLY)
+        list << field_definition
+      end
+      expect_token :RCURLY
+      list
+    end
+
+    def field_definition
+      description = if at?(:STRING); accept_token.last; end
+      name = self.name
+      arguments_definition = if at?(:LPAREN); self.arguments_definition; end
+      expect_token :COLON
+      type = self.type
+      directives           = if at?(:DIR_SIGN); self.directives; end
+
+      Nodes::FieldDefinition.new(description, name, arguments_definition, type, directives)
+    end
+
+    def arguments_definition
+      expect_token :LPAREN
+      list = []
+      while !at?(:RPAREN)
+        list << input_value_definition
+      end
+      expect_token :RPAREN
+      list
+    end
+
+    def input_value_definition
+      description = if at?(:STRING); accept_token.last; end
+      name = self.name
+      expect_token :COLON
+      type = self.type
+      default_value = if at?(:EQUALS); self.default_value; end
+      directives           = if at?(:DIR_SIGN); self.directives; end
+      Nodes::InputValueDefinition.new(description, name, type, default_value, directives)
+    end
+
+    def implements_interfaces
+      expect_token :IMPLEMENTS
+      list = [self.named_type]
+      while at?(:AMP)
+        accept_token
+        list << self.named_type
+      end
+      list
+    end
+
+    def schema_definition
+      expect_token :SCHEMA
+
+      directives = if at?(:DIR_SIGN); self.directives; end
+      expect_token :LCURLY
+      defs = root_operation_type_definition
+      expect_token :RCURLY
+      Nodes::SchemaDefinition.new(directives, defs)
+    end
+
+    def root_operation_type_definition
+      list = []
+      while !at?(:RCURLY)
+        operation_type = self.operation_type
+        expect_token :COLON
+        list << Nodes::RootOperationTypeDefinition.new(operation_type, named_type)
+      end
+      list
     end
 
     def executable_definition
@@ -247,7 +492,7 @@ module TinyGQL
     end
 
     def enum_value
-      Nodes::FloatValue.new(expect_token(:IDENTIFIER).last)
+      Nodes::EnumValue.new(expect_token(:IDENTIFIER).last)
     end
 
     def float_value
@@ -334,7 +579,7 @@ module TinyGQL
     end
 
     def at? tok
-      @token.first == tok
+      @token && @token.first == tok
     end
   end
 end

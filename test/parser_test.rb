@@ -70,5 +70,10 @@ eod
       parser = Parser.new File.read(File.join(__dir__, "kitchen-sink.graphql"))
       parser.parse
     end
+
+    def test_schema_kitchen_sink
+      parser = Parser.new File.read(File.join(__dir__, "schema-kitchen-sink.graphql"))
+      parser.parse
+    end
   end
 end
