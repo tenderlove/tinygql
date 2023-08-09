@@ -5,13 +5,14 @@ require "tinygql/nodes"
 
 module TinyGQL
   class Parser
-    attr_reader :token_name, :token_value
+    class UnexpectedToken < StandardError; end
+
+    attr_reader :token_name
 
     def initialize doc
       @lexer = Lexer.new doc
       @lexer.advance
       @token_name = @lexer.token_name
-      @token_value = @lexer.token_value
     end
 
     def parse
@@ -48,7 +49,7 @@ module TinyGQL
       case token_name
       when :TYPE then object_type_extension
       else
-        raise NotImplementedError, "unimplemented type system extension #{token_name}"
+        raise UnexpectedToken, "Unknown token #{token_name}"
       end
     end
 
@@ -92,7 +93,7 @@ module TinyGQL
     def directive_location
       case token_name
       when "QUERY", "MUTATION", "SUBSCRIPTION", "FIELD", "FRAGMENT_DEFINITION", "FRAGMENT_SPREAD", "INLINE_FRAGMENT"
-        Nodes::ExecutableDirectiveLocation.new(accept_token)
+        Nodes::ExecutableDirectiveLocation.new(accept_token_value)
       when "SCHEMA",
         "SCALAR",
         "OBJECT",
@@ -104,9 +105,9 @@ module TinyGQL
         "ENUM_VALUE",
         "INPUT_OBJECT",
         "INPUT_FIELD_DEFINITION"
-        Nodes::TypeSystemDirectiveLocation.new(accept_token)
+        Nodes::TypeSystemDirectiveLocation.new(accept_token_value)
       else
-        expect_token(:IDENTIFIER)
+        expect_token(:IDENTIFIER); nil # error
       end
     end
 
@@ -119,8 +120,7 @@ module TinyGQL
       when :ENUM then enum_type_definition(desc)
       when :INPUT then input_object_type_definition(desc)
       else
-        p token_name
-        raise
+        raise UnexpectedToken, "Unknown token #{token_name}"
       end
     end
 
@@ -161,7 +161,7 @@ module TinyGQL
     end
 
     def enum_value_definition
-      description = if at?(:STRING); accept_token; end
+      description = if at?(:STRING); accept_token_value; end
       enum_value = self.enum_value
       directives = if at?(:DIR_SIGN); self.directives; end
       Nodes::EnumValueDefinition.new(description, enum_value, directives)
@@ -221,7 +221,7 @@ module TinyGQL
     end
 
     def field_definition
-      description = if at?(:STRING); accept_token; end
+      description = if at?(:STRING); accept_token_value; end
       name = self.name
       arguments_definition = if at?(:LPAREN); self.arguments_definition; end
       expect_token :COLON
@@ -242,7 +242,7 @@ module TinyGQL
     end
 
     def input_value_definition
-      description = if at?(:STRING); accept_token; end
+      description = if at?(:STRING); accept_token_value; end
       name = self.name
       expect_token :COLON
       type = self.type
@@ -291,7 +291,7 @@ module TinyGQL
 
     def fragment_definition
       expect_token :FRAGMENT
-      raise "unexpected token" if at?(:ON)
+      raise UnexpectedToken if at?(:ON)
       name = self.name
       tc = self.type_condition
       directives = if at?(:DIR_SIGN)
@@ -344,9 +344,7 @@ module TinyGQL
       when :ON, :DIR_SIGN, :LCURLY then inline_fragment
       when :IDENTIFIER then fragment_spread
       else
-        p token_name
-        p @lexer
-        raise
+        raise UnexpectedToken, "Unknown token #{token_name}"
       end
     end
 
@@ -470,8 +468,7 @@ module TinyGQL
       when :LCURLY then object_value
       when :VAR_SIGN then variable
       else
-        p token_name
-        raise token_name
+        raise UnexpectedToken, "Unknown value token #{token_name}"
       end
     end
 
@@ -498,19 +495,19 @@ module TinyGQL
     end
 
     def enum_value
-      Nodes::EnumValue.new(expect_token(:IDENTIFIER))
+      Nodes::EnumValue.new(expect_token_value(:IDENTIFIER))
     end
 
     def float_value
-      Nodes::FloatValue.new(expect_token(:FLOAT))
+      Nodes::FloatValue.new(expect_token_value(:FLOAT))
     end
 
     def int_value
-      Nodes::IntValue.new(expect_token(:INT))
+      Nodes::IntValue.new(expect_token_value(:INT))
     end
 
     def string_value
-      Nodes::StringValue.new(expect_token(:STRING))
+      Nodes::StringValue.new(expect_token_value(:STRING))
     end
 
     def boolean_value
@@ -518,7 +515,7 @@ module TinyGQL
     end
 
     def null_value
-      Nodes::NullValue.new(expect_token(:NULL))
+      Nodes::NullValue.new(expect_token_value(:NULL))
     end
 
     def type
@@ -553,37 +550,45 @@ module TinyGQL
 
     def name
       case token_name
-      when :IDENTIFIER, :INPUT, :QUERY then accept_token
+      when :IDENTIFIER, :INPUT, :QUERY then accept_token_value
       else
-        expect_token(:IDENTIFIER)
+        expect_token_value(:IDENTIFIER)
       end
     end
 
-    private
-
     def accept_token
-      token_value = @token_value
       @lexer.advance
       @token_name = @lexer.token_name
-      @token_value = @lexer.token_value
+    end
+
+    # Only use when we care about the accepted token's value
+    def accept_token_value
+      token_value = @lexer.token_value
+      accept_token
       token_value
     end
 
     def expect_token tok
       unless at?(tok)
-        p token_name
-        p @lexer
-        raise "Expected token #{tok}, actual: #{token_name}"
+        raise UnexpectedToken, "Expected token #{tok}, actual: #{token_name}"
       end
       accept_token
     end
 
+    # Only use when we care about the expected token's value
+    def expect_token_value tok
+      token_value = @lexer.token_value
+      expect_token tok
+      token_value
+    end
+
     def expect_tokens toks
+      token_value = @lexer.token_value
       unless toks.any? { |tok| at?(tok) }
-        p token_name
-        raise "Expected token #{tok}, actual: #{token_name}"
+        raise UnexpectedToken, "Expected token #{tok}, actual: #{token_name}"
       end
       accept_token
+      token_value
     end
 
     def at? tok
