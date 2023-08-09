@@ -5,8 +5,12 @@ require "strscan"
 module TinyGQL
   class Lexer
     IDENTIFIER =    /[_A-Za-z][_0-9A-Za-z]*/
-    BLANK   =       /[, \c\r\n\t]+/
-    COMMENT =       /#[^\n\r]*/
+    IGNORE   =       %r{
+      (?:
+        [, \c\r\n\t]+ |
+        \#.*$
+      )
+    }x
     INT =           /[-]?(?:[0]|[1-9][0-9]*)/
     FLOAT_DECIMAL = /[.][0-9]+/
     FLOAT_EXP =     /[eE][+-]?[0-9]+/
@@ -114,8 +118,7 @@ module TinyGQL
       when str = @scan.scan(IDENTIFIER)    then emit(:IDENTIFIER, str)
       when str = @scan.scan(BLOCK_STRING)  then emit_block(str.gsub(/\A#{BLOCK_QUOTE}|#{BLOCK_QUOTE}\z/, ''))
       when str = @scan.scan(QUOTED_STRING) then emit_string(str.gsub(/\A"|"\z/, ''))
-      when str = @scan.scan(COMMENT)       then record_comment(str)
-      when @scan.skip(BLANK)               then advance
+      when @scan.skip(IGNORE)               then advance
       when str = @scan.scan(UNKNOWN_CHAR) then emit(:UNKNOWN_CHAR, str)
       else
         # This should never happen since `UNKNOWN_CHAR` ensures we make progress
@@ -160,10 +163,6 @@ module TinyGQL
         end
       end
       nil
-    end
-
-    def record_comment(str)
-      advance
     end
 
     ESCAPES = /\\["\\\/bfnrt]/
