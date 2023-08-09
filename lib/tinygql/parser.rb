@@ -5,11 +5,13 @@ require "tinygql/nodes"
 
 module TinyGQL
   class Parser
-    attr_reader :token_name
+    attr_reader :token_name, :token_value
 
     def initialize doc
       @lexer = Lexer.new doc
-      @token_name, @token_value = @lexer.next_token
+      @lexer.advance
+      @token_name = @lexer.token_name
+      @token_value = @lexer.token_value
     end
 
     def parse
@@ -24,7 +26,7 @@ module TinyGQL
 
     def definition_list
       list = []
-      while token_name
+      while !@lexer.done?
         list << definition
       end
       list
@@ -561,7 +563,9 @@ module TinyGQL
 
     def accept_token
       token_value = @token_value
-      @token_name, @token_value = @lexer.next_token
+      @lexer.advance
+      @token_name = @lexer.token_name
+      @token_value = @lexer.token_value
       token_value
     end
 
