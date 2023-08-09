@@ -106,23 +106,25 @@ module TinyGQL
     end
 
     def advance
-      if @scan.eos?
-        emit nil, nil
-        return
-      end
+      while true
+        if @scan.eos?
+          emit nil, nil
+          return false
+        end
 
-      case
-      when str = @scan.scan(FLOAT)         then emit(:FLOAT, str)
-      when str = @scan.scan(INT)           then emit(:INT, str)
-      when str = @scan.scan(LIT)           then emit(LIT_NAME_LUT[str], str)
-      when str = @scan.scan(IDENTIFIER)    then emit(:IDENTIFIER, str)
-      when str = @scan.scan(BLOCK_STRING)  then emit_block(str.gsub(/\A#{BLOCK_QUOTE}|#{BLOCK_QUOTE}\z/, ''))
-      when str = @scan.scan(QUOTED_STRING) then emit_string(str.gsub(/\A"|"\z/, ''))
-      when @scan.skip(IGNORE)               then advance
-      when str = @scan.scan(UNKNOWN_CHAR) then emit(:UNKNOWN_CHAR, str)
-      else
-        # This should never happen since `UNKNOWN_CHAR` ensures we make progress
-        raise "Unknown string?"
+        case
+        when str = @scan.scan(FLOAT)         then return emit(:FLOAT, str)
+        when str = @scan.scan(INT)           then return emit(:INT, str)
+        when str = @scan.scan(LIT)           then return emit(LIT_NAME_LUT[str], str)
+        when str = @scan.scan(IDENTIFIER)    then return emit(:IDENTIFIER, str)
+        when str = @scan.scan(BLOCK_STRING)  then return emit_block(str.gsub(/\A#{BLOCK_QUOTE}|#{BLOCK_QUOTE}\z/, ''))
+        when str = @scan.scan(QUOTED_STRING) then return emit_string(str.gsub(/\A"|"\z/, ''))
+        when @scan.skip(IGNORE)               then redo
+        when str = @scan.scan(UNKNOWN_CHAR) then return emit(:UNKNOWN_CHAR, str)
+        else
+          # This should never happen since `UNKNOWN_CHAR` ensures we make progress
+          raise "Unknown string?"
+        end
       end
     end
 
@@ -131,12 +133,11 @@ module TinyGQL
     def emit token_name, token_value
       @token_name = token_name
       @token_value = token_value
+      true
     end
 
     def next_token
-      advance
-      return unless @token_name
-      [@token_name, @token_value]
+      advance && [@token_name, @token_value]
     end
 
     # Replace any escaped unicode or whitespace with the _actual_ characters
