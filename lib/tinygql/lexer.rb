@@ -98,7 +98,7 @@ module TinyGQL
     end
 
     def line
-      @scan.string[0, @scan.pos].count("\n")
+      @scan.string[0, @scan.pos].count("\n") + 1
     end
 
     def done?

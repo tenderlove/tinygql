@@ -254,8 +254,9 @@ module TinyGQL
     def implements_interfaces
       expect_token :IMPLEMENTS
       list = [self.named_type]
-      while at?(:AMP)
-        accept_token
+      while true
+        accept_token if at?(:AMP)
+        break unless at?(:IDENTIFIER)
         list << self.named_type
       end
       list
@@ -570,7 +571,7 @@ module TinyGQL
 
     def expect_token tok
       unless at?(tok)
-        raise UnexpectedToken, "Expected token #{tok}, actual: #{token_name} line: #{@lexer.line}"
+        raise UnexpectedToken, "Expected token #{tok}, actual: #{token_name} #{@lexer.token_value} line: #{@lexer.line}"
       end
       accept_token
     end

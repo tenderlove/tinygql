@@ -140,5 +140,26 @@ eod
       assert_equal "a", node.aliaz
       assert_equal 1, node.arguments.length
     end
+
+    def test_multiple_implements
+      doc = <<-eod
+type SomeType implements a, b, c {
+}
+eod
+      parser = Parser.new doc
+      ast = parser.parse
+      node = ast.find(&:object_type_definition?).first
+      assert_equal ["a", "b", "c"], node.implements_interfaces.map(&:name)
+    end
+
+    def test_multiple_implements_no_end
+      doc = <<-eod
+type SomeType implements a, b, c
+eod
+      parser = Parser.new doc
+      ast = parser.parse
+      node = ast.find(&:object_type_definition?).first
+      assert_equal ["a", "b", "c"], node.implements_interfaces.map(&:name)
+    end
   end
 end
