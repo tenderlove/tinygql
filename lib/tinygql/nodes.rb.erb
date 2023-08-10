@@ -8,14 +8,14 @@ module TinyGQL
 <%- end -%>
       def each(&blk)
         yield self
-        children.each { _1.each(&blk) }
+        children.each { |v| v.each(&blk) }
       end
     end
 
 <%- nodes.each do |node| -%>
     class <%= node.name %> < <%= node.parent ? node.parent : "Node" %>
       <%- if node.fields.any? -%>
-      attr_reader <%= node.fields.map { ":" + _1.name }.join(", ") %>
+      attr_reader <%= node.fields.map { |v| ":" + v.name }.join(", ") %>
 
       def initialize <%= node.fields.map(&:name).join(", ") %>
         <%- node.fields.each do |field| -%>

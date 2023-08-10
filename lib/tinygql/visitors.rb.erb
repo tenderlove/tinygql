@@ -8,7 +8,7 @@ module TinyGQL
         if obj.<%= field.name %>
         <%- end -%>
         <%- if field.list? -%>
-            obj.<%= field.name %>.each { _1.accept self }
+            obj.<%= field.name %>.each { |v| v.accept self }
         <%- end -%>
         <%- if field.node? -%>
             obj.<%= field.name %>.accept self
@@ -29,7 +29,7 @@ module TinyGQL
         if obj.<%= field.name %>
         <%- end -%>
         <%- if field.list? -%>
-            obj.<%= field.name %>.each { seed = _1.fold(self, seed) }
+            obj.<%= field.name %>.each { |v| seed = v.fold(self, seed) }
         <%- end -%>
         <%- if field.node? -%>
             seed = obj.<%= field.name %>.fold self, seed
