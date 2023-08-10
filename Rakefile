@@ -1,9 +1,10 @@
 require "rake/testtask"
+require "bundler/gem_tasks"
 
 Rake::TestTask.new(:test) do |t|
   t.libs << "test"
-  t.libs << "lib"
   t.warning = true
+  t.verbose = true
   t.test_files = FileList["test/**/*_test.rb"]
 end
 
@@ -92,3 +93,26 @@ end
 
 require "rake/clean"
 CLOBBER.append(FILES)
+
+task :build => FILES
+
+namespace :gem do
+  Rake::TestTask.new(:test) do |t|
+    t.libs = ["test"]
+    t.warning = true
+    t.verbose = true
+    t.test_files = FileList["test/**/*_test.rb"]
+  end
+
+  task :install => :build do
+    require 'tmpdir'
+
+    Dir.mktmpdir do |d|
+      ENV["GEM_HOME"] = d
+      ENV["GEM_PATH"] = ([d] + Gem.path).join(":")
+    end
+    sh "gem install -l pkg/*.gem"
+  end
+
+  task :test => :install
+end
