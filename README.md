@@ -9,7 +9,7 @@ I want to target this at server side applications, so the parser eliminates some
 Right now this code:
 
 1. Doesn't know how to execute anything.  It just gives you an AST
-2. Isn't used anywhere
+2. Isn't used anywhere (except in your heart, *but hopefully in production someday!)
 
 ## Usage
 
