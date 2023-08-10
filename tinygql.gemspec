@@ -1,6 +1,8 @@
+require_relative "lib/tinygql/version"
+
 Gem::Specification.new do |s|
   s.name        = "tinygql"
-  s.version     = "0.1.0"
+  s.version     = TinyGQL::VERSION
   s.summary     = "A GraphQL parser"
   s.description = "Yet another GraphQL parser written in Ruby."
   s.authors     = ["Aaron Patterson"]

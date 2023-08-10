@@ -1,4 +1,5 @@
 require "helper"
+require "tinygql"
 
 module TinyGQL
   class ParserTest < Test
@@ -74,6 +75,70 @@ eod
     def test_schema_kitchen_sink
       parser = Parser.new File.read(File.join(__dir__, "schema-kitchen-sink.graphql"))
       parser.parse
+    end
+
+    def test_visitor
+      doc = <<-eod
+mutation {
+  a: likeStory(storyID: 12345) {
+    b: story {
+      c: likeCount
+    }
+  }
+}
+eod
+      viz = Class.new do
+        include TinyGQL::Visitors::Visitor
+
+        attr_reader :nodes
+
+        def initialize
+          @nodes = []
+        end
+
+        def handle_field obj
+          nodes << obj if obj.name == "likeStory"
+          super
+        end
+      end
+      parser = Parser.new doc
+      ast = parser.parse
+      obj = viz.new
+      ast.accept(obj)
+      assert_equal 1, obj.nodes.length
+      node = obj.nodes.first
+      assert_equal "a", node.aliaz
+      assert_equal 1, node.arguments.length
+    end
+
+    def test_fold
+      doc = <<-eod
+mutation {
+  a: likeStory(storyID: 12345) {
+    b: story {
+      c: likeCount
+    }
+  }
+}
+eod
+      viz = Module.new do
+        extend TinyGQL::Visitors::Fold
+
+        def self.handle_field obj, nodes
+          if obj.name == "likeStory"
+            super(obj, nodes + [obj])
+          else
+            super
+          end
+        end
+      end
+      parser = Parser.new doc
+      ast = parser.parse
+      fields = ast.fold(viz, [])
+      assert_equal 1, fields.length
+      node = fields.first
+      assert_equal "a", node.aliaz
+      assert_equal 1, node.arguments.length
     end
   end
 end
