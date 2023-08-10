@@ -73,16 +73,16 @@ module TinyGQL
 
     LIT = Regexp.union(Literals.constants.map { |n| Literals.const_get(n) })
 
-    QUOTED_STRING = %r{#{QUOTE} (?:#{STRING_CHAR})* #{QUOTE}}x
+    QUOTED_STRING = %r{#{QUOTE} ((?:#{STRING_CHAR})*) #{QUOTE}}x
     BLOCK_STRING = %r{
         #{BLOCK_QUOTE}
-    (?: [^"\\]               |  # Any characters that aren't a quote or slash
+    ((?: [^"\\]               |  # Any characters that aren't a quote or slash
     (?<!") ["]{1,2} (?!") |  # Any quotes that don't have quotes next to them
     \\"{0,3}(?!")         |  # A slash followed by <= 3 quotes that aren't followed by a quote
     \\                    |  # A slash
     "{1,2}(?!")              # 1 or 2 " followed by something that isn't a quote
     )*
-    (?:"")?
+    (?:"")?)
         #{BLOCK_QUOTE}
     }xm
 
@@ -117,8 +117,8 @@ module TinyGQL
         when str = @scan.scan(INT)           then return emit(:INT, str)
         when str = @scan.scan(LIT)           then return emit(LIT_NAME_LUT[str], str)
         when str = @scan.scan(IDENTIFIER)    then return emit(:IDENTIFIER, str)
-        when str = @scan.scan(BLOCK_STRING)  then return emit_block(str.gsub(/\A#{BLOCK_QUOTE}|#{BLOCK_QUOTE}\z/, ''))
-        when str = @scan.scan(QUOTED_STRING) then return emit_string(str.gsub(/\A"|"\z/, ''))
+        when @scan.scan(BLOCK_STRING)        then return emit_block(@scan[1])
+        when @scan.scan(QUOTED_STRING)       then return emit_string(@scan[1])
         when @scan.skip(IGNORE)               then redo
         when str = @scan.scan(UNKNOWN_CHAR) then return emit(:UNKNOWN_CHAR, str)
         else
