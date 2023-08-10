@@ -113,13 +113,13 @@ module TinyGQL
         end
 
         case
+        when @scan.skip(IGNORE)              then redo
         when str = @scan.scan(FLOAT)         then return emit(:FLOAT, str)
         when str = @scan.scan(INT)           then return emit(:INT, str)
         when str = @scan.scan(LIT)           then return emit(LIT_NAME_LUT[str], str)
         when str = @scan.scan(IDENTIFIER)    then return emit(:IDENTIFIER, str)
         when @scan.skip(BLOCK_STRING)        then return emit_block(@scan[1])
         when @scan.skip(QUOTED_STRING)       then return emit_string(@scan[1])
-        when @scan.skip(IGNORE)              then redo
         when str = @scan.scan(UNKNOWN_CHAR)  then return emit(:UNKNOWN_CHAR, str)
         else
           # This should never happen since `UNKNOWN_CHAR` ensures we make progress
