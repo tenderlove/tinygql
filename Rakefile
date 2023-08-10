@@ -1,5 +1,6 @@
 require "rake/testtask"
 require "bundler/gem_tasks"
+require_relative "lib/tinygql/version"
 
 Rake::TestTask.new(:test) do |t|
   t.libs << "test"
@@ -97,6 +98,19 @@ CLOBBER.append(FILES)
 task :build => FILES
 
 namespace :gem do
+  task :push => [:test, :build] do
+    # check for a clean worktree
+    sh "git update-index --really-refresh"
+    sh "git diff-index --quiet HEAD"
+
+    # tag it
+    sh "git tag -m'tagging release' v#{TinyGQL::VERSION}"
+
+    # push it
+    ENV['GEM_HOST_OTP_CODE'] = `ykman oath accounts code -s rubygems.org`.chomp
+    sh "gem push pkg/tinygql-#{TinyGQL::VERSION}.gem"
+  end
+
   Rake::TestTask.new(:test) do |t|
     t.libs = ["test"]
     t.warning = true
@@ -111,7 +125,7 @@ namespace :gem do
       ENV["GEM_HOME"] = d
       ENV["GEM_PATH"] = ([d] + Gem.path).join(":")
     end
-    sh "gem install -l pkg/*.gem"
+    sh "gem install -l pkg/tinygql-#{TinyGQL::VERSION}.gem"
   end
 
   task :test => :install

@@ -1,3 +1,4 @@
 lib/tinygql/nodes.rb
 lib/tinygql/visitors.rb
 Gemfile.lock
+pkg
