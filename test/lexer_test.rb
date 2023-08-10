@@ -25,6 +25,14 @@ module TinyGQL
       end
     end
 
+    def test_regular_string
+      str = "hello\n# foo\n\"world\"# lol \nlol"
+      lexer = Lexer.new str
+      assert_equal [:IDENTIFIER, "hello"], lexer.next_token
+      assert_equal [:STRING, "world"], lexer.next_token
+      assert_equal [:IDENTIFIER, "lol"], lexer.next_token
+    end
+
     def test_multiline_comment
       str = "hello\n# foo\n# lol \nlol"
       lexer = Lexer.new str
