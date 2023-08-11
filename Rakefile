@@ -109,6 +109,7 @@ namespace :gem do
     # push it
     ENV['GEM_HOST_OTP_CODE'] = `ykman oath accounts code -s rubygems.org`.chomp
     sh "gem push pkg/tinygql-#{TinyGQL::VERSION}.gem"
+    sh "git push --tags"
   end
 
   Rake::TestTask.new(:test) do |t|
