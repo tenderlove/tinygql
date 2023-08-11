@@ -4,38 +4,41 @@ require "strscan"
 
 module TinyGQL
   class Lexer
-    IDENTIFIER =    /[_A-Za-z][_0-9A-Za-z]*/
+    IDENTIFIER =    /[_A-Za-z][_0-9A-Za-z]*\b/
     IGNORE   =       %r{
       (?:
         [, \c\r\n\t]+ |
         \#.*$
-      )
+      )*
     }x
     INT =           /[-]?(?:[0]|[1-9][0-9]*)/
     FLOAT_DECIMAL = /[.][0-9]+/
     FLOAT_EXP =     /[eE][+-]?[0-9]+/
-    FLOAT =         /#{INT}(#{FLOAT_DECIMAL}#{FLOAT_EXP}|#{FLOAT_DECIMAL}|#{FLOAT_EXP})/
+    NUMERIC =  /#{INT}(#{FLOAT_DECIMAL}#{FLOAT_EXP}|#{FLOAT_DECIMAL}|#{FLOAT_EXP})?/
+
+    KEYWORDS = {
+      "on" => :ON,
+      "fragment" => :FRAGMENT,
+      "true" => :TRUE,
+      "false" => :FALSE,
+      "null" => :NULL,
+      "query" => :QUERY,
+      "mutation" => :MUTATION,
+      "subscription" => :SUBSCRIPTION,
+      "schema" => :SCHEMA,
+      "scalar" => :SCALAR,
+      "type" => :TYPE,
+      "extend" => :EXTEND,
+      "implements" => :IMPLEMENTS,
+      "interface" => :INTERFACE,
+      "union" => :UNION,
+      "enum" => :ENUM,
+      "input" => :INPUT,
+      "directive" => :DIRECTIVE,
+      "repeatable" => :REPEATABLE
+    }.freeze
 
     module Literals
-      ON =            /on\b/
-      FRAGMENT =      /fragment\b/
-      TRUE =          /true\b/
-      FALSE =         /false\b/
-      NULL =          /null\b/
-      QUERY =         /query\b/
-      MUTATION =      /mutation\b/
-      SUBSCRIPTION =  /subscription\b/
-      SCHEMA =        /schema\b/
-      SCALAR =        /scalar\b/
-      TYPE =          /type\b/
-      EXTEND =        /extend\b/
-      IMPLEMENTS =    /implements\b/
-      INTERFACE =     /interface\b/
-      UNION =         /union\b/
-      ENUM =          /enum\b/
-      INPUT =         /input\b/
-      DIRECTIVE =     /directive\b/
-      REPEATABLE =    /repeatable\b/
       LCURLY =        '{'
       RCURLY =        '}'
       LPAREN =        '('
@@ -66,9 +69,7 @@ module TinyGQL
     STRING_CHAR = /#{ESCAPED_QUOTE}|[^"\\]|#{UNICODE_ESCAPE}|#{STRING_ESCAPE}/
 
     LIT_NAME_LUT = Literals.constants.each_with_object({}) { |n, o|
-      key = Literals.const_get(n)
-      key = key.is_a?(Regexp) ? key.source.gsub(/(\\b|\\)/, '') : key
-      o[key] = n
+      o[Literals.const_get(n)] = n
     }
 
     LIT = Regexp.union(Literals.constants.map { |n| Literals.const_get(n) })
@@ -85,9 +86,6 @@ module TinyGQL
     (?:"")?)
         #{BLOCK_QUOTE}
     }xm
-
-    # # catch-all for anything else. must be at the bottom for precedence.
-    UNKNOWN_CHAR =         /./
 
     def initialize string
       raise unless string.valid_encoding?
@@ -106,25 +104,17 @@ module TinyGQL
     end
 
     def advance
-      while true
-        if @scan.eos?
-          emit nil, nil
-          return false
-        end
+      @scan.skip(IGNORE)
 
-        case
-        when @scan.skip(IGNORE)              then redo
-        when str = @scan.scan(FLOAT)         then return emit(:FLOAT, str)
-        when str = @scan.scan(INT)           then return emit(:INT, str)
-        when str = @scan.scan(LIT)           then return emit(LIT_NAME_LUT[str], str)
-        when str = @scan.scan(IDENTIFIER)    then return emit(:IDENTIFIER, str)
-        when @scan.skip(BLOCK_STRING)        then return emit_block(@scan[1])
-        when @scan.skip(QUOTED_STRING)       then return emit_string(@scan[1])
-        when str = @scan.scan(UNKNOWN_CHAR)  then return emit(:UNKNOWN_CHAR, str)
-        else
-          # This should never happen since `UNKNOWN_CHAR` ensures we make progress
-          raise "Unknown string?"
-        end
+      case
+      when str = @scan.scan(LIT)           then return emit(LIT_NAME_LUT[str], str)
+      when str = @scan.scan(IDENTIFIER)    then return emit(KEYWORDS.fetch(str, :IDENTIFIER), str)
+      when @scan.skip(BLOCK_STRING)        then return emit_block(@scan[1])
+      when @scan.skip(QUOTED_STRING)       then return emit_string(@scan[1])
+      when str = @scan.scan(NUMERIC)       then return emit(@scan[1] ? :FLOAT : :INT, str)
+      when @scan.eos?                      then emit(nil, nil) and return false
+      else
+        emit(:UNKNOWN_CHAR, @scan.getch)
       end
     end
 

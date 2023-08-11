@@ -40,6 +40,18 @@ module TinyGQL
       assert_equal [:IDENTIFIER, "lol"], lexer.next_token
     end
 
+    def test_int
+      str = "1"
+      lexer = Lexer.new str
+      assert_equal [:INT, "1"], lexer.next_token
+    end
+
+    def test_float
+      str = "1.2"
+      lexer = Lexer.new str
+      assert_equal [:FLOAT, "1.2"], lexer.next_token
+    end
+
     def test_block_string
       doc = <<-eos
 """
