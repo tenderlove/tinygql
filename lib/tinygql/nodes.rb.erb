@@ -4,7 +4,7 @@ module TinyGQL
       include Enumerable
 
 <%- nodes.each do |node| -%>
-      def <%= node.human_name %>? = false
+    def <%= node.human_name %>?; false; end
 <%- end -%>
       def each(&blk)
         yield self
@@ -32,7 +32,7 @@ module TinyGQL
         viz.handle_<%= node.human_name %> self, seed
       end
 
-      def <%= node.human_name %>? = true
+      def <%= node.human_name %>?; true; end
 
       <%- if node.has_children? -%>
       def children
