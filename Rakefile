@@ -131,3 +131,13 @@ namespace :gem do
 
   task :test => :install
 end
+
+desc "Run benchmarks"
+task :benchmark do
+  ruby "-I lib bin/bench.rb"
+end
+
+desc "Profile with benchmarks"
+task :profile do
+  ruby "-I lib bin/bench.rb"
+end

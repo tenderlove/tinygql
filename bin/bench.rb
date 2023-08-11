@@ -1,11 +1,22 @@
 # frozen_string_literal: true
 
-$:.unshift(File.expand_path("../lib", __dir__))
 require "tinygql"
-require "benchmark"
+require "benchmark/ips"
 
 source = File.read(File.expand_path("../test/kitchen-sink.graphql", __dir__))
 
-Benchmark.bm do |x|
-  x.report { 10_000.times { TinyGQL::Parser.new(source).parse } }
+files = Dir[File.join(File.expand_path("../benchmark", __dir__), "**/*")].select { |f| File.file? f }
+
+Benchmark.ips do |x|
+  x.report "kitchen-sink" do
+    TinyGQL.parse source
+  end
+
+  files.each do |file_name|
+    data = File.read file_name
+    name = File.basename(file_name, File.extname(file_name))
+    x.report name do
+      TinyGQL.parse data
+    end
+  end
 end
