@@ -98,19 +98,19 @@ nodes:
 
   - name: FragmentSpread
     fields:
-      - fragment_name
+      - fragment_name: literal
       - directives?: list
 
   - name: FragmentDefinition
     fields:
-      - fragment_name
+      - fragment_name: literal
       - type_condition
       - directives?: list
       - selection_set: list
 
   - name: RootOperationTypeDefinition
     fields:
-      - operation_type
+      - operation_type: literal
       - named_type
 
   - name: SchemaDefinition

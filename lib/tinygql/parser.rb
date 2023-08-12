@@ -404,9 +404,9 @@ module TinyGQL
 
     def fragment_spread
       name = self.name
-      directives = if at?(:DIR_SIGN)
-        self.directives
-      end
+      directives = if at?(:DIR_SIGN); self.directives; end
+
+      expect_token(:IDENTIFIER) if at?(:ON)
 
       Nodes::FragmentSpread.new(name, directives)
     end

@@ -3,6 +3,13 @@ require "tinygql"
 
 module TinyGQL
   class ParserTest < Test
+    def test_homogeneous_ast
+      %w{ kitchen-sink.graphql schema-extensions.graphql schema-kitchen-sink.graphql }.each do |f|
+        ast = Parser.parse File.read(File.join(__dir__, f))
+        assert ast.all? { |x| x.is_a?(TinyGQL::Nodes::Node) }
+      end
+    end
+
     def test_multi_tok
       doc = <<-eod
 mutation aaron($neat: Int = 123) @foo(lol: { lon: 456 }) {
