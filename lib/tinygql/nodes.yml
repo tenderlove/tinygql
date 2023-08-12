@@ -84,7 +84,7 @@ nodes:
   - name: Directive
     fields:
       - name: literal
-      - arguments: list
+      - arguments?: list
 
   - name: TypeCondition
     fields:
@@ -209,3 +209,28 @@ nodes:
     fields:
       - name: literal
       - directives?: list
+
+  - name: InterfaceTypeExtension
+    fields:
+      - name: literal
+      - implements_interfaces?: list
+      - directives?: list
+      - fields_definition?: list
+
+  - name: UnionTypeExtension
+    fields:
+      - name: literal
+      - directives?: list
+      - union_member_types?: list
+
+  - name: EnumTypeExtension
+    fields:
+      - name: literal
+      - directives?: list
+      - enum_value_definition?: list
+
+  - name: InputObjectTypeExtension
+    fields:
+      - name: literal
+      - directives?: list
+      - input_fields_definition?: list

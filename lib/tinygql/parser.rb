@@ -55,9 +55,46 @@ module TinyGQL
       case token_name
       when :SCALAR then scalar_type_extension
       when :TYPE then object_type_extension
+      when :INTERFACE then interface_type_extension
+      when :UNION then union_type_extension
+      when :ENUM then enum_type_extension
+      when :INPUT then input_object_type_extension
       else
-        expect_token :FAIL
+        expect_token :SCALAR
       end
+    end
+
+    def input_object_type_extension
+      expect_token :INPUT
+      name = self.name
+      directives = if at?(:DIR_SIGN); self.directives; end
+      input_fields_definition = if at?(:LCURLY); self.input_fields_definition; end
+      Nodes::InputObjectTypeExtension.new(name, directives, input_fields_definition)
+    end
+
+    def enum_type_extension
+      expect_token :ENUM
+      name = self.name
+      directives = if at?(:DIR_SIGN); self.directives; end
+      enum_values_definition = if at?(:LCURLY); self.enum_values_definition; end
+      Nodes::EnumTypeExtension.new(name, directives, enum_values_definition)
+    end
+
+    def union_type_extension
+      expect_token :UNION
+      name = self.name
+      directives = if at?(:DIR_SIGN); self.directives; end
+      union_member_types = if at?(:EQUALS); self.union_member_types; end
+      Nodes::UnionTypeExtension.new(name, directives, union_member_types)
+    end
+
+    def interface_type_extension
+      expect_token :INTERFACE
+      name = self.name
+      implements_interfaces = if at?(:IMPLEMENTS); self.implements_interfaces; end
+      directives           = if at?(:DIR_SIGN); self.directives; end
+      fields_definition   = if at?(:LCURLY); self.fields_definition; end
+      Nodes::InterfaceTypeExtension.new(name, implements_interfaces, directives, fields_definition)
     end
 
     def scalar_type_extension
