@@ -53,10 +53,18 @@ module TinyGQL
     def type_system_extension
       expect_token :EXTEND
       case token_name
+      when :SCALAR then scalar_type_extension
       when :TYPE then object_type_extension
       else
         expect_token :FAIL
       end
+    end
+
+    def scalar_type_extension
+      expect_token :SCALAR
+      name = self.name
+      directives = if at?(:DIR_SIGN); self.directives; end
+      Nodes::ScalarTypeExtension.new(name, directives)
     end
 
     def object_type_extension
@@ -128,7 +136,7 @@ module TinyGQL
       when :ENUM then enum_type_definition(desc)
       when :INPUT then input_object_type_definition(desc)
       else
-        expect_token :FAIL
+        expect_token :TYPE
       end
     end
 
@@ -300,7 +308,7 @@ module TinyGQL
 
     def fragment_definition
       expect_token :FRAGMENT
-      expect_token(:FAIL) if at?(:ON)
+      expect_token(:IDENTIFIER) if at?(:ON)
       name = self.name
       tc = self.type_condition
       directives = if at?(:DIR_SIGN)
@@ -353,7 +361,7 @@ module TinyGQL
       when :ON, :DIR_SIGN, :LCURLY then inline_fragment
       when :IDENTIFIER then fragment_spread
       else
-        expect_token :FAIL
+        expect_token :IDENTIFIER
       end
     end
 
@@ -477,7 +485,7 @@ module TinyGQL
       when :LCURLY then object_value
       when :VAR_SIGN then variable
       else
-        expect_token :FAIL
+        expect_token :INT
       end
     end
 

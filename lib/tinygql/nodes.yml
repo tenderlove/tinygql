@@ -204,3 +204,8 @@ nodes:
       - name: literal
       - arguments_definition?: list
       - directive_locations: list
+
+  - name: ScalarTypeExtension
+    fields:
+      - name: literal
+      - directives?: list
