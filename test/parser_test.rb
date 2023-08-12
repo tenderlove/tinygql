@@ -187,5 +187,19 @@ directive @skip(if: Boolean!) on FIELD | FRAGMENT_SPREAD | INLINE_FRAGMENT
       assert_equal "neat!", node.description.value
       assert_equal ["FIELD", "FRAGMENT_SPREAD", "INLINE_FRAGMENT"], node.directive_locations.map(&:name)
     end
+
+    def test_scalar_schema_extensions
+      ast = Parser.parse File.read(File.join(__dir__, "schema-extensions.graphql"))
+      node = ast.find { |x| x.scalar_type_extension? && x.name == "PositiveInt" }
+      assert node
+      assert_equal 2, node.directives.length
+    end
+
+    def test_scalar_schema_extensions
+      ast = Parser.parse File.read(File.join(__dir__, "schema-extensions.graphql"))
+      node = ast.find { |x| x.scalar_type_extension? && x.name == "Aaron" }
+      assert node
+      assert_nil node.directives
+    end
   end
 end
