@@ -7,7 +7,9 @@ module TinyGQL
   class Parser
     class UnexpectedToken < StandardError; end
 
-    attr_reader :token_name
+    def self.parse doc
+      new(doc).parse
+    end
 
     def initialize doc
       @lexer = Lexer.new doc
@@ -20,6 +22,8 @@ module TinyGQL
     end
 
     private
+
+    attr_reader :token_name
 
     def document
       Nodes::Document.new definition_list
@@ -40,7 +44,9 @@ module TinyGQL
       when :EXTEND
         type_system_extension
       else
-        type_system_definition
+        desc = if at?(:STRING); string_value; end
+
+        type_system_definition desc
       end
     end
 
@@ -62,12 +68,12 @@ module TinyGQL
       Nodes::ObjectTypeExtension.new(name, implements_interfaces, directives, fields_definition)
     end
 
-    def type_system_definition
+    def type_system_definition desc
       case token_name
-      when :SCHEMA then schema_definition
-      when :DIRECTIVE then directive_defintion(nil)
+      when :SCHEMA then schema_definition(desc)
+      when :DIRECTIVE then directive_defintion(desc)
       else
-        type_definition(nil)
+        type_definition(desc)
       end
     end
 
@@ -91,9 +97,11 @@ module TinyGQL
     end
 
     def directive_location
-      case token_name
+      directive = expect_token_value :IDENTIFIER
+
+      case directive
       when "QUERY", "MUTATION", "SUBSCRIPTION", "FIELD", "FRAGMENT_DEFINITION", "FRAGMENT_SPREAD", "INLINE_FRAGMENT"
-        Nodes::ExecutableDirectiveLocation.new(accept_token_value)
+        Nodes::ExecutableDirectiveLocation.new(directive)
       when "SCHEMA",
         "SCALAR",
         "OBJECT",
@@ -105,9 +113,9 @@ module TinyGQL
         "ENUM_VALUE",
         "INPUT_OBJECT",
         "INPUT_FIELD_DEFINITION"
-        Nodes::TypeSystemDirectiveLocation.new(accept_token_value)
+        Nodes::TypeSystemDirectiveLocation.new(directive)
       else
-        expect_token(:IDENTIFIER); nil # error
+        raise UnexpectedToken, "Expected directive #{directive}"
       end
     end
 
@@ -161,7 +169,7 @@ module TinyGQL
     end
 
     def enum_value_definition
-      description = if at?(:STRING); accept_token_value; end
+      description = if at?(:STRING); string_value; end
       enum_value = self.enum_value
       directives = if at?(:DIR_SIGN); self.directives; end
       Nodes::EnumValueDefinition.new(description, enum_value, directives)
@@ -221,7 +229,7 @@ module TinyGQL
     end
 
     def field_definition
-      description = if at?(:STRING); accept_token_value; end
+      description = if at?(:STRING); string_value; end
       name = self.name
       arguments_definition = if at?(:LPAREN); self.arguments_definition; end
       expect_token :COLON
@@ -242,7 +250,7 @@ module TinyGQL
     end
 
     def input_value_definition
-      description = if at?(:STRING); accept_token_value; end
+      description = if at?(:STRING); string_value; end
       name = self.name
       expect_token :COLON
       type = self.type
@@ -262,14 +270,14 @@ module TinyGQL
       list
     end
 
-    def schema_definition
+    def schema_definition desc
       expect_token :SCHEMA
 
       directives = if at?(:DIR_SIGN); self.directives; end
       expect_token :LCURLY
       defs = root_operation_type_definition
       expect_token :RCURLY
-      Nodes::SchemaDefinition.new(directives, defs)
+      Nodes::SchemaDefinition.new(desc, directives, defs)
     end
 
     def root_operation_type_definition

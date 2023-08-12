@@ -115,12 +115,13 @@ nodes:
 
   - name: SchemaDefinition
     fields:
+      - description?
       - directives?: list
       - root_operation_definitions: list
 
   - name: FieldDefinition
     fields:
-      - description?: literal
+      - description?
       - name: literal
       - arguments_definition?: list
       - type
@@ -128,7 +129,7 @@ nodes:
 
   - name: InputValueDefinition
     fields:
-      - description?: literal
+      - description?
       - name: literal
       - type
       - default_value?
@@ -136,7 +137,7 @@ nodes:
 
   - name: ObjectTypeDefinition
     fields:
-      - description?: literal
+      - description?
       - name: literal
       - implements_interfaces?: list
       - directives?: list
@@ -144,40 +145,40 @@ nodes:
 
   - name: InterfaceTypeDefinition
     fields:
-      - description?: literal
+      - description?
       - name: literal
       - directives?: list
       - fields_definition?: list
 
   - name: UnionTypeDefinition
     fields:
-      - description?: literal
+      - description?
       - name: literal
       - directives?: list
       - union_member_types?: list
 
   - name: ScalarTypeDefinition
     fields:
-      - description?: literal
+      - description?
       - name: literal
       - directives?: list
 
   - name: EnumValueDefinition
     fields:
-      - description?: literal
+      - description?
       - enum_value
       - directives?: list
 
   - name: EnumTypeDefinition
     fields:
-      - description?: literal
+      - description?
       - name: literal
       - directives?: list
       - enum_value_definition?: list
 
   - name: InputObjectTypeDefinition
     fields:
-      - description?: literal
+      - description?
       - name: literal
       - directives?: list
       - input_fields_definition?: list
@@ -199,7 +200,7 @@ nodes:
 
   - name: DirectiveDefinition
     fields:
-      - description?: literal
+      - description?
       - name: literal
       - arguments_definition?: list
       - directive_locations: list

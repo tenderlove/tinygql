@@ -161,5 +161,31 @@ eod
       node = ast.find(&:object_type_definition?).first
       assert_equal ["a", "b", "c"], node.implements_interfaces.map(&:name)
     end
+
+    def test_schemas_have_descriptions
+      doc = <<-eod
+"foo bar"
+schema {
+  query: QueryType
+  mutation: MutationType
+}
+      eod
+      ast = TinyGQL::Parser.parse doc
+      node = ast.find(&:schema_definition?)
+      assert node
+      assert_equal "foo bar", node.description.value
+    end
+
+    def test_directives_have_descriptions
+      doc = <<-eod
+"""neat!"""
+directive @skip(if: Boolean!) on FIELD | FRAGMENT_SPREAD | INLINE_FRAGMENT
+      eod
+      ast = TinyGQL::Parser.parse doc
+      node = ast.find(&:directive_definition?)
+      assert node
+      assert_equal "neat!", node.description.value
+      assert_equal ["FIELD", "FRAGMENT_SPREAD", "INLINE_FRAGMENT"], node.directive_locations.map(&:name)
+    end
   end
 end
