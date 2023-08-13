@@ -3,6 +3,13 @@ require "tinygql"
 
 module TinyGQL
   class ParserTest < Test
+    def test_homogeneous_ast
+      %w{ kitchen-sink.graphql schema-extensions.graphql schema-kitchen-sink.graphql }.each do |f|
+        ast = Parser.parse File.read(File.join(__dir__, f))
+        assert ast.all? { |x| x.is_a?(TinyGQL::Nodes::Node) }
+      end
+    end
+
     def test_multi_tok
       doc = <<-eod
 mutation aaron($neat: Int = 123) @foo(lol: { lon: 456 }) {
@@ -195,11 +202,41 @@ directive @skip(if: Boolean!) on FIELD | FRAGMENT_SPREAD | INLINE_FRAGMENT
       assert_equal 2, node.directives.length
     end
 
-    def test_scalar_schema_extensions
+    def test_scalar_schema_extensions_no_directives
       ast = Parser.parse File.read(File.join(__dir__, "schema-extensions.graphql"))
       node = ast.find { |x| x.scalar_type_extension? && x.name == "Aaron" }
       assert node
       assert_nil node.directives
+    end
+
+    def test_interface_extension
+      ast = Parser.parse File.read(File.join(__dir__, "schema-extensions.graphql"))
+      node = ast.find { |x| x.interface_type_extension? && x.name == "NamedEntity" }
+      assert node
+      assert_nil node.directives
+      assert node.fields_definition
+    end
+
+    def test_union_extension
+      ast = Parser.parse File.read(File.join(__dir__, "schema-extensions.graphql"))
+      node = ast.find { |x| x.union_type_extension? && x.name == "Cool" }
+      assert node
+      assert_equal 1, node.directives.length
+      assert_equal "foo", node.directives.first.name
+    end
+
+    def test_enum_extension
+      ast = Parser.parse File.read(File.join(__dir__, "schema-extensions.graphql"))
+      assert ast.find { |x| x.enum_type_extension? && x.name == "Direction" }
+      assert ast.find { |x| x.enum_type_extension? && x.name == "AnnotatedEnum" }
+      assert ast.find { |x| x.enum_type_extension? && x.name == "Neat" }
+    end
+
+    def test_input_extension
+      ast = Parser.parse File.read(File.join(__dir__, "schema-extensions.graphql"))
+      assert ast.find { |x| x.input_object_type_extension? && x.name == "InputType" }
+      assert ast.find { |x| x.input_object_type_extension? && x.name == "AnnotatedInput" }
+      assert ast.find { |x| x.input_object_type_extension? && x.name == "NeatInput" }
     end
   end
 end

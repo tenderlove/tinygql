@@ -1,46 +1,34 @@
 module TinyGQL
   module Visitors
     module Visitor
-<%- nodes.each do |node| -%>
+<% nodes.each do |node| %>
       def handle_<%= node.human_name %> obj
       <%- node.fields.find_all(&:visitable?).each do |field| -%>
-        <%- if field.nullable? -%>
-        if obj.<%= field.name %>
-        <%- end -%>
         <%- if field.list? -%>
-            obj.<%= field.name %>.each { |v| v.accept self }
+        obj.<%= field.name %>.each { |v| v.accept self }<% if field.nullable? %> if obj.<%= field.name %><% end %>
         <%- end -%>
         <%- if field.node? -%>
-            obj.<%= field.name %>.accept self
-        <%- end -%>
-        <%- if field.nullable? -%>
-        end
+        obj.<%= field.name %>.accept(self)<% if field.nullable? %> if obj.<%= field.name %><% end %>
         <%- end -%>
       <%- end -%>
       end
-<%- end -%>
+<% end %>
     end
 
     module Fold
-<%- nodes.each do |node| -%>
+<% nodes.each do |node| %>
       def handle_<%= node.human_name %> obj, seed
       <%- node.fields.find_all(&:visitable?).each do |field| -%>
-        <%- if field.nullable? -%>
-        if obj.<%= field.name %>
-        <%- end -%>
         <%- if field.list? -%>
-            obj.<%= field.name %>.each { |v| seed = v.fold(self, seed) }
+        obj.<%= field.name %>.each { |v| seed = v.fold(self, seed) }<% if field.nullable? %> if obj.<%= field.name %><% end %>
         <%- end -%>
         <%- if field.node? -%>
-            seed = obj.<%= field.name %>.fold self, seed
-        <%- end -%>
-        <%- if field.nullable? -%>
-        end
+        seed = obj.<%= field.name %>.fold(self, seed)<% if field.nullable? %> if obj.<%= field.name %><% end %>
         <%- end -%>
       <%- end -%>
         seed
       end
-<%- end -%>
+<% end %>
     end
   end
 end

@@ -1,0 +1,48 @@
+extend scalar PositiveInt
+    @serializationType(name: "global::System.Int32")
+    @runtimeType(name: "global::System.Int32")
+
+extend scalar Aaron
+
+extend interface NamedEntity {
+  nickname: String
+}
+
+extend type Person {
+  nickname: String
+}
+
+extend type Business {
+  nickname: String
+}
+
+extend interface NamedEntity @addedDirective
+
+extend union Cool @foo
+
+extend union Great @onUnion = A | B
+
+extend enum Direction {
+  NORTH
+  EAST
+  SOUTH
+  WEST
+}
+
+extend enum AnnotatedEnum @onEnum {
+  ANNOTATED_VALUE @onEnumValue
+  OTHER_VALUE
+}
+
+extend enum Neat @onEnum
+
+extend input InputType {
+  key: String!
+  answer: Int = 42
+}
+
+extend input AnnotatedInput @onInputObjectType {
+  annotatedField: Type @onField
+}
+
+extend input NeatInput @onInputObjectType
