@@ -107,11 +107,11 @@ module TinyGQL
       @scan.skip(IGNORE)
 
       case
-      when str = @scan.scan(LIT)           then return emit(LIT_NAME_LUT[str], str)
-      when str = @scan.scan(IDENTIFIER)    then return emit(KEYWORDS.fetch(str, :IDENTIFIER), str)
-      when @scan.skip(BLOCK_STRING)        then return emit_block(@scan[1])
-      when @scan.skip(QUOTED_STRING)       then return emit_string(@scan[1])
-      when str = @scan.scan(NUMERIC)       then return emit(@scan[1] ? :FLOAT : :INT, str)
+      when str = @scan.scan(LIT)           then emit(LIT_NAME_LUT[str], str)
+      when str = @scan.scan(IDENTIFIER)    then emit(KEYWORDS.fetch(str, :IDENTIFIER), str)
+      when @scan.skip(BLOCK_STRING)        then emit_block(@scan[1])
+      when @scan.skip(QUOTED_STRING)       then emit_string(@scan[1])
+      when str = @scan.scan(NUMERIC)       then emit(@scan[1] ? :FLOAT : :INT, str)
       when @scan.eos?                      then emit(nil, nil) and return false
       else
         emit(:UNKNOWN_CHAR, @scan.getch)
