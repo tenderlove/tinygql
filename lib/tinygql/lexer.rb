@@ -114,7 +114,7 @@ module TinyGQL
       when @scan.eos?                      then false
       when @scan.skip(ELLIPSIS)            then :ELLIPSIS
       when tok = LIT_NAME_LUT[@string.getbyte(@scan.pos)] then
-        @scan.get_byte
+        @scan.pos += 1
         tok
       when str = @scan.scan(IDENTIFIER)    then KEYWORDS.fetch(str, :IDENTIFIER)
       when @scan.skip(BLOCK_STRING)        then :STRING

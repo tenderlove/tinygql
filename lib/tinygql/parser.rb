@@ -642,7 +642,16 @@ module TinyGQL
 
     def name
       case token_name
-      when :IDENTIFIER, :INPUT, :QUERY, :TYPE then accept_token_value
+      when :IDENTIFIER then accept_token_value
+      when :TYPE then
+        accept_token
+        "type"
+      when :QUERY then
+        accept_token
+        "query"
+      when :INPUT then
+        accept_token
+        "input"
       else
         expect_token_value(:IDENTIFIER)
       end
