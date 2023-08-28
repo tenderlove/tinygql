@@ -166,7 +166,7 @@ module TinyGQL
       when @scan.skip(IDENTIFIER)    then :IDENTIFIER
       when @scan.skip(BLOCK_STRING)  then :STRING
       when @scan.skip(QUOTED_STRING) then :STRING
-      when str = @scan.scan(NUMERIC) then (@scan[1] ? :FLOAT : :INT)
+      when @scan.skip(NUMERIC) then (@scan[1] ? :FLOAT : :INT)
       else
         @scan.getch
         :UNKNOWN_CHAR
