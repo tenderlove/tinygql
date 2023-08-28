@@ -477,7 +477,17 @@ module TinyGQL
     end
 
     def operation_type
-      expect_tokens([:QUERY, :MUTATION, :SUBSCRIPTION])
+      val = if at?(:QUERY)
+        "query"
+      elsif at?(:MUTATION)
+        "mutation"
+      elsif at?(:SUBSCRIPTION)
+        "subscription"
+      else
+        expect_token(:QUERY)
+      end
+      accept_token
+      val
     end
 
     def directives
@@ -608,7 +618,7 @@ module TinyGQL
         accept_token
         Nodes::BooleanValue.new(pos, "false")
       else
-        expect_tokens([:TRUE, :FALSE])
+        expect_token(:TRUE)
       end
     end
 
@@ -694,15 +704,6 @@ module TinyGQL
     def expect_string_value
       token_value = @lexer.string_value
       expect_token :STRING
-      token_value
-    end
-
-    def expect_tokens toks
-      token_value = @lexer.token_value
-      unless toks.any? { |tok| at?(tok) }
-        raise UnexpectedToken, "Expected token #{tok}, actual: #{token_name}"
-      end
-      accept_token
       token_value
     end
 
