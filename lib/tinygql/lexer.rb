@@ -38,6 +38,8 @@ module TinyGQL
       "repeatable" => :REPEATABLE
     }.freeze
 
+    KW_RE = /#{Regexp.union(KEYWORDS.keys.sort)}\b/
+
     module Literals
       LCURLY =        '{'
       RCURLY =        '}'
@@ -107,6 +109,38 @@ module TinyGQL
       @scan.eos?
     end
 
+    KW_LUT = [:FRAGMENT,
+              :INTERFACE,
+              :MUTATION,
+              :EXTEND,
+              :FALSE,
+              :ENUM,
+              :TRUE,
+              :NULL,
+              nil,
+              nil,
+              nil,
+              nil,
+              nil,
+              nil,
+              :QUERY,
+              nil,
+              nil,
+              nil,
+              :REPEATABLE,
+              :IMPLEMENTS,
+              :INPUT,
+              :TYPE,
+              :SCHEMA,
+              nil,
+              nil,
+              nil,
+              :DIRECTIVE,
+              :UNION,
+              nil,
+              nil,
+              :SCALAR]
+
     def advance
       @scan.skip(IGNORE)
 
@@ -116,10 +150,23 @@ module TinyGQL
       when tok = LIT_NAME_LUT[@string.getbyte(@scan.pos)] then
         @scan.pos += 1
         tok
-      when str = @scan.scan(IDENTIFIER)    then KEYWORDS.fetch(str, :IDENTIFIER)
-      when @scan.skip(BLOCK_STRING)        then :STRING
-      when @scan.skip(QUOTED_STRING)       then :STRING
-      when str = @scan.scan(NUMERIC)       then (@scan[1] ? :FLOAT : :INT)
+      when @scan.skip(KW_RE) then
+        len = @scan.matched_size
+        return :ON if len == 2
+        return :SUBSCRIPTION if len == 12
+
+        pos = @scan.pos - len
+
+        # First 3 bytes are unique, so we'll hash on those
+        key = (@string.getbyte(pos + 2) << 16) |
+          (@string.getbyte(pos + 1) << 8) |
+          @string.getbyte(pos + 0)
+
+        KW_LUT[hash(key)]
+      when @scan.skip(IDENTIFIER)    then :IDENTIFIER
+      when @scan.skip(BLOCK_STRING)  then :STRING
+      when @scan.skip(QUOTED_STRING) then :STRING
+      when str = @scan.scan(NUMERIC) then (@scan[1] ? :FLOAT : :INT)
       else
         @scan.getch
         :UNKNOWN_CHAR
@@ -266,6 +313,12 @@ module TinyGQL
 
       # Rebuild the string
       lines.size > 1 ? lines.join("\n") : (lines.first || "".dup)
+    end
+
+    def hash key
+      # Constant came from perfect hash generation
+      m = key * 145291
+      (m >> 28) & 0x1f
     end
   end
 end

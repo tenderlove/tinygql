@@ -601,11 +601,20 @@ module TinyGQL
     end
 
     def boolean_value
-      Nodes::BooleanValue.new(pos, expect_tokens([:TRUE, :FALSE]))
+      if at?(:TRUE)
+        accept_token
+        Nodes::BooleanValue.new(pos, "true")
+      elsif at?(:FALSE)
+        accept_token
+        Nodes::BooleanValue.new(pos, "false")
+      else
+        expect_tokens([:TRUE, :FALSE])
+      end
     end
 
     def null_value
-      Nodes::NullValue.new(pos, expect_token_value(:NULL))
+      expect_token :NULL
+      Nodes::NullValue.new(pos, "null")
     end
 
     def type

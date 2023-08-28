@@ -101,5 +101,83 @@ eod
                     [:RCURLY, "}"],
                     [:RCURLY, "}"]], toks
     end
+
+    def test_lex_4
+      words = ["true", "null", "enum", "type"]
+      doc = words.join(" ")
+
+      lexer = Lexer.new doc
+      toks = []
+      while tok = lexer.next_token
+        toks << tok
+      end
+
+      assert_equal words.map { |x| [x.upcase.to_sym, x] }, toks
+    end
+
+    def test_lex_5
+      words = ["input", "false", "query", "union"]
+      doc = words.join(" ")
+
+      lexer = Lexer.new doc
+      toks = []
+      while tok = lexer.next_token
+        toks << tok
+      end
+
+      assert_equal words.map { |x| [x.upcase.to_sym, x] }, toks
+    end
+
+    def test_lex_6
+      words = ["extend", "scalar", "schema"]
+      doc = words.join(" ")
+
+      lexer = Lexer.new doc
+      toks = []
+      while tok = lexer.next_token
+        toks << tok
+      end
+
+      assert_equal words.map { |x| [x.upcase.to_sym, x] }, toks
+    end
+
+    def test_lex_8
+      words = ["mutation", "fragment"]
+      doc = words.join(" ")
+
+      lexer = Lexer.new doc
+      toks = []
+      while tok = lexer.next_token
+        toks << tok
+      end
+
+      assert_equal words.map { |x| [x.upcase.to_sym, x] }, toks
+    end
+
+    def test_lex_9
+      words = ["interface", "directive"]
+      doc = words.join(" ")
+
+      lexer = Lexer.new doc
+      toks = []
+      while tok = lexer.next_token
+        toks << tok
+      end
+
+      assert_equal words.map { |x| [x.upcase.to_sym, x] }, toks
+    end
+
+    def test_kw_lex
+      words = ["on", "fragment", "true", "false", "null", "query", "mutation", "subscription", "schema", "scalar", "type", "extend", "implements", "interface", "union", "enum", "input", "directive", "repeatable"]
+      doc = words.join(" ")
+
+      lexer = Lexer.new doc
+      toks = []
+      while tok = lexer.next_token
+        toks << tok
+      end
+
+      assert_equal words.map { |x| [x.upcase.to_sym, x] }, toks
+    end
   end
 end
