@@ -16,7 +16,7 @@ module TinyGQL
       end
 
 <%- nodes.each do |node| -%>
-    def <%= node.human_name %>?; false; end
+      def <%= node.human_name %>?; false; end
 <%- end -%>
       def each(&blk)
         yield self
