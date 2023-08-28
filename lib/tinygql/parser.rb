@@ -13,8 +13,7 @@ module TinyGQL
 
     def initialize doc
       @lexer = Lexer.new doc
-      @lexer.advance
-      @token_name = @lexer.token_name
+      @token_name = @lexer.advance
     end
 
     def parse
@@ -598,7 +597,7 @@ module TinyGQL
     end
 
     def string_value
-      Nodes::StringValue.new(pos, expect_token_value(:STRING))
+      Nodes::StringValue.new(pos, expect_string_value)
     end
 
     def boolean_value
@@ -650,8 +649,7 @@ module TinyGQL
     end
 
     def accept_token
-      @lexer.advance
-      @token_name = @lexer.token_name
+      @token_name = @lexer.advance
     end
 
     # Only use when we care about the accepted token's value
@@ -672,6 +670,12 @@ module TinyGQL
     def expect_token_value tok
       token_value = @lexer.token_value
       expect_token tok
+      token_value
+    end
+
+    def expect_string_value
+      token_value = @lexer.string_value
+      expect_token :STRING
       token_value
     end
 

@@ -48,12 +48,13 @@ module TinyGQL
       COLON =         ':'
       VAR_SIGN =      '$'
       DIR_SIGN =      '@'
-      ELLIPSIS =      '...'
       EQUALS =        '='
       BANG =          '!'
       PIPE =          '|'
       AMP =           '&'
     end
+
+    ELLIPSIS =      '...'
 
     include Literals
 
@@ -68,8 +69,8 @@ module TinyGQL
     ESCAPED_QUOTE = /\\"/;
     STRING_CHAR = /#{ESCAPED_QUOTE}|[^"\\]|#{UNICODE_ESCAPE}|#{STRING_ESCAPE}/
 
-    LIT_NAME_LUT = Literals.constants.each_with_object({}) { |n, o|
-      o[Literals.const_get(n)] = n
+    LIT_NAME_LUT = Literals.constants.each_with_object([]) { |n, o|
+      o[Literals.const_get(n).ord] = n
     }
 
     LIT = Regexp.union(Literals.constants.map { |n| Literals.const_get(n) })
@@ -90,9 +91,8 @@ module TinyGQL
     def initialize string
       raise unless string.valid_encoding?
 
+      @string = string
       @scan = StringScanner.new string
-      @token_name = nil
-      @token_value = nil
     end
 
     def pos
@@ -111,27 +111,40 @@ module TinyGQL
       @scan.skip(IGNORE)
 
       case
-      when str = @scan.scan(LIT)           then emit(LIT_NAME_LUT[str], str)
-      when str = @scan.scan(IDENTIFIER)    then emit(KEYWORDS.fetch(str, :IDENTIFIER), str)
-      when @scan.skip(BLOCK_STRING)        then emit_block(@scan[1])
-      when @scan.skip(QUOTED_STRING)       then emit_string(@scan[1])
-      when str = @scan.scan(NUMERIC)       then emit(@scan[1] ? :FLOAT : :INT, str)
-      when @scan.eos?                      then emit(nil, nil) and return false
+      when @scan.eos?                      then false
+      when @scan.skip(ELLIPSIS)            then :ELLIPSIS
+      when tok = LIT_NAME_LUT[@string.getbyte(@scan.pos)] then
+        @scan.get_byte
+        tok
+      when str = @scan.scan(IDENTIFIER)    then KEYWORDS.fetch(str, :IDENTIFIER)
+      when @scan.skip(BLOCK_STRING)        then :STRING
+      when @scan.skip(QUOTED_STRING)       then :STRING
+      when str = @scan.scan(NUMERIC)       then (@scan[1] ? :FLOAT : :INT)
       else
-        emit(:UNKNOWN_CHAR, @scan.getch)
+        @scan.getch
+        :UNKNOWN_CHAR
       end
     end
 
-    attr_reader :token_name, :token_value
+    def token_value
+      @string.byteslice(@scan.pos - @scan.matched_size, @scan.matched_size)
+    end
 
-    def emit token_name, token_value
-      @token_name = token_name
-      @token_value = token_value
-      true
+    def string_value
+      str = token_value
+      block = str.start_with?('"""')
+      str.gsub!(/\A"*|"*\z/, '')
+
+      if block
+        emit_block str
+      else
+        emit_string str
+      end
     end
 
     def next_token
-      advance && [@token_name, @token_value]
+      return unless tok = advance
+      [tok, tok == :STRING ? string_value : token_value]
     end
 
     # Replace any escaped unicode or whitespace with the _actual_ characters
@@ -188,7 +201,7 @@ module TinyGQL
         if !value.valid_encoding?
           emit(:BAD_UNICODE_ESCAPE, value)
         else
-          emit(:STRING, value)
+          value
         end
       end
     end
