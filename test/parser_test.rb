@@ -46,6 +46,23 @@ eod
       assert_equal ["likeStory", "story", "likeCount"], ast.find_all(&:field?).map(&:name)
     end
 
+    def test_has_position_and_line
+      doc = <<-eod
+mutation {
+  likeStory(sturyID: 12345) {
+    story {
+      likeCount
+    }
+  }
+}
+eod
+      parser = Parser.new doc
+      ast = parser.parse
+      expected = ["likeStory", "story", "likeCount"].map { |str| doc.index(str) + str.bytesize }
+      assert_equal expected, ast.find_all(&:field?).map(&:pos)
+      assert_equal [2, 3, 4], ast.find_all(&:field?).map { |n| n.line(doc) }
+    end
+
     def test_field_alias
       doc = <<-eod
 mutation {
