@@ -95,6 +95,10 @@ module TinyGQL
       @token_value = nil
     end
 
+    def pos
+      @scan.pos
+    end
+
     def line
       @scan.string[0, @scan.pos].count("\n") + 1
     end

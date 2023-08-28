@@ -3,6 +3,10 @@ module TinyGQL
     class Node
       include Enumerable
 
+      def initialize pos
+        @pos = pos
+      end
+
 <%- nodes.each do |node| -%>
     def <%= node.human_name %>?; false; end
 <%- end -%>
@@ -17,7 +21,8 @@ module TinyGQL
       <%- if node.fields.any? -%>
       attr_reader <%= node.fields.map { |v| ":" + v.name }.join(", ") %>
 
-      def initialize <%= node.fields.map(&:name).join(", ") %>
+      def initialize <%= (["pos"] + node.fields.map(&:name)).join(", ") %>
+        super(pos)
         <%- node.fields.each do |field| -%>
         @<%= field.name %> = <%= field.name %>
         <%- end -%>
