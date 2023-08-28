@@ -144,7 +144,15 @@ module TinyGQL
 
     def next_token
       return unless tok = advance
-      [tok, tok == :STRING ? string_value : token_value]
+      val = case tok
+      when :STRING then string_value
+      when *Literals.constants
+        @string.byteslice(@scan.pos - 1, 1)
+      else
+        token_value
+      end
+
+      [tok, val]
     end
 
     # Replace any escaped unicode or whitespace with the _actual_ characters
