@@ -16,29 +16,29 @@ module TinyGQL
     FLOAT_EXP =     /[eE][+-]?[0-9]+/
     NUMERIC =  /#{INT}(#{FLOAT_DECIMAL}#{FLOAT_EXP}|#{FLOAT_DECIMAL}|#{FLOAT_EXP})?/
 
-    KEYWORDS = {
-      "on" => :ON,
-      "fragment" => :FRAGMENT,
-      "true" => :TRUE,
-      "false" => :FALSE,
-      "null" => :NULL,
-      "query" => :QUERY,
-      "mutation" => :MUTATION,
-      "subscription" => :SUBSCRIPTION,
-      "schema" => :SCHEMA,
-      "scalar" => :SCALAR,
-      "type" => :TYPE,
-      "extend" => :EXTEND,
-      "implements" => :IMPLEMENTS,
-      "interface" => :INTERFACE,
-      "union" => :UNION,
-      "enum" => :ENUM,
-      "input" => :INPUT,
-      "directive" => :DIRECTIVE,
-      "repeatable" => :REPEATABLE
-    }.freeze
+    KEYWORDS = [
+      "on",
+      "fragment",
+      "true",
+      "false",
+      "null",
+      "query",
+      "mutation",
+      "subscription",
+      "schema",
+      "scalar",
+      "type",
+      "extend",
+      "implements",
+      "interface",
+      "union",
+      "enum",
+      "input",
+      "directive",
+      "repeatable"
+    ].freeze
 
-    KW_RE = /#{Regexp.union(KEYWORDS.keys.sort)}\b/
+    KW_RE = /#{Regexp.union(KEYWORDS.sort)}\b/
 
     module Literals
       LCURLY =        '{'
