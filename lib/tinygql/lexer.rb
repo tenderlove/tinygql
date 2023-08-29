@@ -93,11 +93,10 @@ module TinyGQL
 
       @string = string
       @scan = StringScanner.new string
+      @start = nil
     end
 
-    def pos
-      @scan.pos
-    end
+    attr_reader :start
 
     def line
       @scan.string[0, @scan.pos].count("\n") + 1
@@ -142,10 +141,12 @@ module TinyGQL
     def advance
       @scan.skip(IGNORE)
 
+      @start = @scan.pos
+
       case
       when @scan.eos?                      then false
       when @scan.skip(ELLIPSIS)            then :ELLIPSIS
-      when tok = LIT_NAME_LUT[@string.getbyte(@scan.pos)] then
+      when tok = LIT_NAME_LUT[@string.getbyte(@start)] then
         @scan.pos += 1
         tok
       when @scan.skip(KW_RE) then
@@ -153,7 +154,7 @@ module TinyGQL
         return :ON if len == 2
         return :SUBSCRIPTION if len == 12
 
-        pos = @scan.pos - len
+        pos = @start
 
         # First 3 bytes are unique, so we'll hash on those
         key = (@string.getbyte(pos + 2) << 16) |

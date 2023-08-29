@@ -25,7 +25,7 @@ module TinyGQL
     attr_reader :token_name
 
     def pos
-      @lexer.pos
+      @lexer.start
     end
 
     def document

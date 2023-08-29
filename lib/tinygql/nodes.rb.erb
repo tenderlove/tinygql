@@ -3,16 +3,16 @@ module TinyGQL
     class Node
       include Enumerable
 
-      # `pos` is the position of the _end_ of a token
-      attr_reader :pos
+      # `start` is the start position of this node in the source document
+      attr_reader :start
 
-      def initialize pos
-        @pos = pos
+      def initialize start
+        @start = start
       end
 
       # Return the line of this node given `doc`
       def line doc
-        doc[0, @pos].count("\n") + 1
+        doc[0, @start].count("\n") + 1
       end
 
 <%- nodes.each do |node| -%>

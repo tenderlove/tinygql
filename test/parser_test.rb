@@ -58,8 +58,8 @@ mutation {
 eod
       parser = Parser.new doc
       ast = parser.parse
-      expected = ["likeStory", "story", "likeCount"].map { |str| doc.index(str) + str.bytesize }
-      assert_equal expected, ast.find_all(&:field?).map(&:pos)
+      expected = ["likeStory", "story", "likeCount"].map { |str| doc.index(str) }
+      assert_equal expected, ast.find_all(&:field?).map(&:start)
       assert_equal [2, 3, 4], ast.find_all(&:field?).map { |n| n.line(doc) }
     end
 
