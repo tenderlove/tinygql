@@ -124,10 +124,8 @@ module TinyGQL
 
         pos = @start
 
-        # First 3 bytes are unique, so we'll hash on those
-        key = (@string.getbyte(pos + 2) << 16) |
-          (@string.getbyte(pos + 1) << 8) |
-          @string.getbyte(pos)
+        # Second 2 bytes are unique, so we'll hash on those
+        key = (@string.getbyte(pos + 2) << 8) | @string.getbyte(pos + 1)
 
         KW_LUT[hash(key)]
       when @scan.skip(IDENTIFIER)    then :IDENTIFIER
@@ -282,9 +280,7 @@ module TinyGQL
       lines.size > 1 ? lines.join("\n") : (lines.first || "".dup)
     end
 
-    KW_LUT =[nil,
-             :FRAGMENT,
-             :INTERFACE,
+    KW_LUT =[:INTERFACE,
              :MUTATION,
              :EXTEND,
              :FALSE,
@@ -297,8 +293,8 @@ module TinyGQL
              nil,
              nil,
              nil,
-             :QUERY,
              nil,
+             :QUERY,
              nil,
              nil,
              :REPEATABLE,
@@ -313,10 +309,12 @@ module TinyGQL
              :UNION,
              nil,
              nil,
-             :SCALAR]
+             :SCALAR,
+             nil,
+             :FRAGMENT]
 
     def hash key
-      (key * 72663) >> 27 & 0x1f
+      (key * 18592990) >> 27 & 0x1f
     end
   end
 end

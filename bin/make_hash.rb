@@ -17,7 +17,7 @@ end
 kws = TinyGQL::Lexer::KEYWORDS - ["on", "subscription"]
 MASK = (1 << bits(kws.length)) - 1
 
-prefixes = kws.map { |word| word[0, 3] }
+prefixes = kws.map { |word| word[1, 2] }
 
 # make sure they're unique
 raise "Not unique" unless prefixes.uniq == prefixes
