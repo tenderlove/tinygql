@@ -66,6 +66,29 @@ ast = TinyGQL.parse "{ neat { cool } }"
 p ast.fold(Fold, []) # => ["neat", "cool"]
 ```
 
+Nodes store their position in the source GraphQL document.
+If you'd like to extract the line number of the node, you'll need to keep a reference to the document and pass it to the `line` method on the node:
+
+```ruby
+doc = <<-eod
+mutation {
+  likeStory(sturyID: 12345) {
+    story {
+      likeCount
+    }
+  }
+}
+
+eod
+
+parser = TinyGQL::Parser.new doc
+ast = parser.parse
+
+ast.find_all(&:field?).each { |node|
+  p node.name => node.line(doc)
+}
+```
+
 ## LICENSE:
 
 I've licensed this code as Apache 2.0, but the lexer is from [GraphQL-Ruby](https://github.com/rmosolgo/graphql-ruby/blob/772734dfcc7aa0513c867259912474ef0ba799c3/lib/graphql/language/lexer.rb) and is under the MIT license.
