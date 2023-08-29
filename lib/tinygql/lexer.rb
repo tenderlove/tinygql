@@ -106,38 +106,6 @@ module TinyGQL
       @scan.eos?
     end
 
-    KW_LUT = [:FRAGMENT,
-              :INTERFACE,
-              :MUTATION,
-              :EXTEND,
-              :FALSE,
-              :ENUM,
-              :TRUE,
-              :NULL,
-              nil,
-              nil,
-              nil,
-              nil,
-              nil,
-              nil,
-              :QUERY,
-              nil,
-              nil,
-              nil,
-              :REPEATABLE,
-              :IMPLEMENTS,
-              :INPUT,
-              :TYPE,
-              :SCHEMA,
-              nil,
-              nil,
-              nil,
-              :DIRECTIVE,
-              :UNION,
-              nil,
-              nil,
-              :SCALAR]
-
     def advance
       @scan.skip(IGNORE)
 
@@ -159,7 +127,7 @@ module TinyGQL
         # First 3 bytes are unique, so we'll hash on those
         key = (@string.getbyte(pos + 2) << 16) |
           (@string.getbyte(pos + 1) << 8) |
-          @string.getbyte(pos + 0)
+          @string.getbyte(pos)
 
         KW_LUT[hash(key)]
       when @scan.skip(IDENTIFIER)    then :IDENTIFIER
@@ -314,10 +282,41 @@ module TinyGQL
       lines.size > 1 ? lines.join("\n") : (lines.first || "".dup)
     end
 
+    KW_LUT =[nil,
+             :FRAGMENT,
+             :INTERFACE,
+             :MUTATION,
+             :EXTEND,
+             :FALSE,
+             :ENUM,
+             :TRUE,
+             :NULL,
+             nil,
+             nil,
+             nil,
+             nil,
+             nil,
+             nil,
+             :QUERY,
+             nil,
+             nil,
+             nil,
+             :REPEATABLE,
+             :IMPLEMENTS,
+             :INPUT,
+             :TYPE,
+             :SCHEMA,
+             nil,
+             nil,
+             nil,
+             :DIRECTIVE,
+             :UNION,
+             nil,
+             nil,
+             :SCALAR]
+
     def hash key
-      # Constant came from perfect hash generation
-      m = key * 145291
-      (m >> 28) & 0x1f
+      (key * 72663) >> 27 & 0x1f
     end
   end
 end
