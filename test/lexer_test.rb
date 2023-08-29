@@ -179,5 +179,18 @@ eod
 
       assert_equal words.map { |x| [x.upcase.to_sym, x] }, toks
     end
+
+    def test_looks_like_kw
+      words = ["fragment", "fragments"]
+      doc = words.join(" ")
+
+      lexer = Lexer.new doc
+      toks = []
+      while tok = lexer.advance
+        toks << tok
+      end
+
+      assert_equal [:FRAGMENT, :IDENTIFIER], toks
+    end
   end
 end
