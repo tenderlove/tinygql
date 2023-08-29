@@ -75,8 +75,6 @@ module TinyGQL
       o[Literals.const_get(n).ord] = n
     }
 
-    LIT = Regexp.union(Literals.constants.map { |n| Literals.const_get(n) })
-
     QUOTED_STRING = %r{#{QUOTE} ((?:#{STRING_CHAR})*) #{QUOTE}}x
     BLOCK_STRING = %r{
         #{BLOCK_QUOTE}
