@@ -13,7 +13,7 @@ module TinyGQL
 
     def initialize doc
       @lexer = Lexer.new doc
-      @token_name = @lexer.advance
+      accept_token
     end
 
     def parse
@@ -538,7 +538,7 @@ module TinyGQL
 
     def variable_definition
       loc = pos
-      var = variable
+      var = variable if at?(:VAR_SIGN)
       expect_token(:COLON)
       type = self.type
       default_value = if at?(:EQUALS)
@@ -653,15 +653,14 @@ module TinyGQL
     end
 
     def variable
-      return unless at?(:VAR_SIGN)
       loc = pos
-      accept_token
+      expect_token(:VAR_SIGN)
       Nodes::Variable.new loc, name
     end
 
     def name
       case token_name
-      when :IDENTIFIER then accept_token_value
+      when :IDENTIFIER then expect_token_value(:IDENTIFIER)
       when :TYPE then
         accept_token
         "type"
@@ -672,19 +671,12 @@ module TinyGQL
         accept_token
         "input"
       else
-        expect_token_value(:IDENTIFIER)
+        expect_token(:IDENTIFIER)
       end
     end
 
     def accept_token
       @token_name = @lexer.advance
-    end
-
-    # Only use when we care about the accepted token's value
-    def accept_token_value
-      token_value = @lexer.token_value
-      accept_token
-      token_value
     end
 
     def expect_token tok
