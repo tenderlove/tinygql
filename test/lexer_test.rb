@@ -192,5 +192,15 @@ eod
 
       assert_equal [:FRAGMENT, :IDENTIFIER], toks
     end
+
+    def test_num_with_dots
+      lexer = Lexer.new "1...2"
+      toks = []
+      while tok = lexer.advance
+        toks << tok
+      end
+
+      assert_equal [:INT, :ELLIPSIS, :INT], toks
+    end
   end
 end
