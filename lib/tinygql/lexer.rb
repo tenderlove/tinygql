@@ -126,7 +126,7 @@ module TinyGQL
         # Second 2 bytes are unique, so we'll hash on those
         key = (@string.getbyte(pos + 2) << 8) | @string.getbyte(pos + 1)
 
-        KW_LUT[hash(key)]
+        KW_LUT[_hash(key)]
       when @scan.skip(IDENTIFIER)    then :IDENTIFIER
       when @scan.skip(BLOCK_STRING)  then :STRING
       when @scan.skip(QUOTED_STRING) then :STRING
