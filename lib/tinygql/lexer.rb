@@ -117,8 +117,7 @@ module TinyGQL
       when tok = LIT_NAME_LUT[@string.getbyte(@start)] then
         @scan.pos += 1
         tok
-      when @scan.skip(KW_RE) then
-        len = @scan.matched_size
+      when len = @scan.skip(KW_RE) then
         return :ON if len == 2
         return :SUBSCRIPTION if len == 12
 
@@ -313,7 +312,7 @@ module TinyGQL
              nil,
              :FRAGMENT]
 
-    def hash key
+    def _hash key
       (key * 18592990) >> 27 & 0x1f
     end
   end
