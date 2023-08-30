@@ -30,5 +30,19 @@ module TinyGQL
       end
 <% end %>
     end
+
+    module Null
+<% nodes.each do |node| %>
+      def handle_<%= node.human_name %> obj
+      end
+<% end %>
+    end
+
+    module NullFold
+<% nodes.each do |node| %>
+      def handle_<%= node.human_name %> obj, _
+      end
+<% end %>
+    end
   end
 end
