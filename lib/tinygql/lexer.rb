@@ -113,7 +113,6 @@ module TinyGQL
 
       case
       when @scan.eos?                      then false
-      when @scan.skip(ELLIPSIS)            then :ELLIPSIS
       when tok = LIT_NAME_LUT[@string.getbyte(@start)] then
         @scan.pos += 1
         tok
@@ -128,9 +127,10 @@ module TinyGQL
 
         KW_LUT[_hash(key)]
       when @scan.skip(IDENTIFIER)    then :IDENTIFIER
+      when @scan.skip(NUMERIC)       then (@scan[1] ? :FLOAT : :INT)
+      when @scan.skip(ELLIPSIS)      then :ELLIPSIS
       when @scan.skip(BLOCK_STRING)  then :STRING
       when @scan.skip(QUOTED_STRING) then :STRING
-      when @scan.skip(NUMERIC) then (@scan[1] ? :FLOAT : :INT)
       else
         @scan.getch
         :UNKNOWN_CHAR
