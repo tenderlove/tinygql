@@ -165,6 +165,54 @@ eod
       assert_equal 1, node.arguments.length
     end
 
+    def test_null
+      doc = <<-eod
+mutation {
+  a: likeStory(storyID: 12345) {
+    b: story {
+      c: likeCount
+    }
+  }
+}
+eod
+      viz = Module.new do
+        extend TinyGQL::Visitors::Null
+
+        def self.handle_field obj
+          true
+        end
+      end
+      parser = Parser.new doc
+      ast = parser.parse
+      ast.each { |node|
+        assert_equal(node.field?, !!node.accept(viz))
+      }
+    end
+
+    def test_null_fold
+      doc = <<-eod
+mutation {
+  a: likeStory(storyID: 12345) {
+    b: story {
+      c: likeCount
+    }
+  }
+}
+eod
+      viz = Module.new do
+        extend TinyGQL::Visitors::NullFold
+
+        def self.handle_field obj, x
+          x
+        end
+      end
+      parser = Parser.new doc
+      ast = parser.parse
+      ast.each { |node|
+        assert_equal(node.field?, !!node.fold(viz, true))
+      }
+    end
+
     def test_multiple_implements
       doc = <<-eod
 type SomeType implements a, b, c {
