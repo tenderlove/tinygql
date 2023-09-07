@@ -71,8 +71,35 @@ module TinyGQL
     ESCAPED_QUOTE = /\\"/;
     STRING_CHAR = /#{ESCAPED_QUOTE}|[^"\\]|#{UNICODE_ESCAPE}|#{STRING_ESCAPE}/
 
-    LIT_NAME_LUT = Literals.constants.each_with_object([]) { |n, o|
+    PUNCT_LUT = Literals.constants.each_with_object([]) { |n, o|
       o[Literals.const_get(n).ord] = n
+    }
+
+    LEAD_BYTES = Array.new(255) { 0 }
+
+    module LeadBytes
+      INT = 1
+      KW = 2
+      ELLIPSIS = 3
+      STRING = 4
+      PUNCT = 5
+      IDENT = 6
+    end
+
+    10.times { |i| LEAD_BYTES[i.to_s.ord] = LeadBytes::INT }
+
+    ("A".."Z").each { |chr| LEAD_BYTES[chr.ord] = LeadBytes::IDENT }
+    ("a".."z").each { |chr| LEAD_BYTES[chr.ord] = LeadBytes::IDENT }
+    LEAD_BYTES['_'.ord] = LeadBytes::IDENT
+
+    KEYWORDS.each { |kw| LEAD_BYTES[kw.getbyte(0)] = LeadBytes::KW }
+
+    LEAD_BYTES['.'.ord] = LeadBytes::ELLIPSIS
+
+    LEAD_BYTES['"'.ord] = LeadBytes::STRING
+
+    Literals.constants.each_with_object([]) { |n, o|
+      LEAD_BYTES[Literals.const_get(n).ord] = LeadBytes::PUNCT
     }
 
     QUOTED_STRING = %r{#{QUOTE} ((?:#{STRING_CHAR})*) #{QUOTE}}x
@@ -109,30 +136,54 @@ module TinyGQL
     def advance
       @scan.skip(IGNORE)
 
+      return false if @scan.eos?
+
       @start = @scan.pos
 
-      case
-      when @scan.eos?                      then false
-      when tok = LIT_NAME_LUT[@string.getbyte(@start)] then
+      lead_byte = @string.getbyte(@start)
+      lead_code = LEAD_BYTES[lead_byte]
+
+      if lead_code == LeadBytes::PUNCT
         @scan.pos += 1
-        tok
-      when len = @scan.skip(KW_RE) then
-        return :ON if len == 2
-        return :SUBSCRIPTION if len == 12
+        PUNCT_LUT[lead_byte]
 
-        pos = @start
+      elsif lead_code == LeadBytes::KW
+        if len = @scan.skip(KW_RE)
+          return :ON if len == 2
+          return :SUBSCRIPTION if len == 12
 
-        # Second 2 bytes are unique, so we'll hash on those
-        key = (@string.getbyte(pos + 2) << 8) | @string.getbyte(pos + 1)
+          pos = @start
 
-        KW_LUT[_hash(key)]
-      when @scan.skip(IDENTIFIER)    then :IDENTIFIER
-      when @scan.skip(NUMERIC)       then (@scan[1] ? :FLOAT : :INT)
-      when @scan.skip(ELLIPSIS)      then :ELLIPSIS
-      when @scan.skip(BLOCK_STRING)  then :STRING
-      when @scan.skip(QUOTED_STRING) then :STRING
+          # Second 2 bytes are unique, so we'll hash on those
+          key = (@string.getbyte(pos + 2) << 8) | @string.getbyte(pos + 1)
+
+          KW_LUT[_hash(key)]
+        else
+          @scan.skip(IDENTIFIER)
+          :IDENTIFIER
+        end
+
+      elsif lead_code == LeadBytes::IDENT
+        @scan.skip(IDENTIFIER)
+        :IDENTIFIER
+
+      elsif lead_code == LeadBytes::INT
+        @scan.skip(NUMERIC)
+        @scan[1] ? :FLOAT : :INT
+
+      elsif lead_code == LeadBytes::ELLIPSIS
+        2.times do |i|
+          raise unless @string.getbyte(@start + i + 1) == 46
+        end
+        @scan.pos += 3
+        :ELLIPSIS
+
+      elsif lead_code == LeadBytes::STRING
+        raise unless @scan.skip(BLOCK_STRING) || @scan.skip(QUOTED_STRING)
+        :STRING
+
       else
-        @scan.getch
+        @scan.pos += 1
         :UNKNOWN_CHAR
       end
     end
@@ -157,6 +208,8 @@ module TinyGQL
       return unless tok = advance
       val = case tok
       when :STRING then string_value
+      when :ELLIPSIS then
+        @string.byteslice(@scan.pos - 3, 3)
       when *Literals.constants
         @string.byteslice(@scan.pos - 1, 1)
       else
