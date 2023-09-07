@@ -21,7 +21,7 @@ module TinyGQL
         lexer = Lexer.new punc
         token = lexer.next_token
         expected = PUNC_LUT[punc]
-        assert_equal(expected || [:ON, "on"], token)
+        assert_equal(expected, token)
       end
     end
 
