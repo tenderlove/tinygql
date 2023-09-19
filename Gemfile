@@ -1,6 +1,6 @@
 source "https://rubygems.org"
 
 gem "benchmark-ips"
-gem "vernier"
+gem "vernier", platform: :mri
 
 gemspec
