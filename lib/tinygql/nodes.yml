@@ -4,7 +4,10 @@ nodes:
     fields:
       - definitions: list
 
+  - name: ExecutableDefinition
+
   - name: OperationDefinition
+    parent: ExecutableDefinition
     fields:
     - type: literal
     - name?: literal
@@ -102,6 +105,7 @@ nodes:
       - directives?: list
 
   - name: FragmentDefinition
+    parent: ExecutableDefinition
     fields:
       - fragment_name: literal
       - type_condition

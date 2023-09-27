@@ -46,6 +46,47 @@ eod
       assert_equal ["likeStory", "story", "likeCount"], ast.find_all(&:field?).map(&:name)
     end
 
+    def test_operation_definition_is_executable
+      doc = <<-eod
+mutation {
+  likeStory(storyID: 12345) {
+    story {
+      likeCount
+    }
+  }
+}
+eod
+      ast = TinyGQL.parse doc
+      od = ast.find_all(&:operation_definition?)
+      refute_predicate od, :empty?
+      assert od.all?(&:executable_definition?)
+    end
+
+    def test_fragments_are_executable
+      doc = <<-eod
+query withFragments {
+  user(id: 4) {
+    friends(first: 10) {
+      ...friendFields
+    }
+    mutualFriends(first: 10) {
+      ...friendFields
+    }
+  }
+}
+
+fragment friendFields on User {
+  id
+  name
+  profilePic(size: 50)
+}
+eod
+      ast = TinyGQL.parse doc
+      od = ast.find_all(&:fragment_definition?)
+      refute_predicate od, :empty?
+      assert od.all?(&:executable_definition?), "fragments should be executable"
+    end
+
     def test_has_position_and_line
       doc = <<-eod
 mutation {
