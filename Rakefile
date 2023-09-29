@@ -4,9 +4,9 @@ require_relative "lib/tinygql/version"
 
 FILES = [ "lib/tinygql/nodes.rb", "lib/tinygql/visitors.rb" ]
 
-task :test => [*FILES, :tldr]
+task :tldr => FILES
 
-task default: :test
+task default: :tldr
 
 def extract_nodes source
   require "psych"
@@ -105,7 +105,7 @@ namespace :gem do
     sh "git push --tags"
   end
 
-  task :test => :test
+  task :test => :tldr
 
   task :install => :build do
     require 'tmpdir'
