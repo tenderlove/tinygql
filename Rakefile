@@ -1,19 +1,12 @@
-require "rake/testtask"
 require "bundler/gem_tasks"
+require "tldr/rake"
 require_relative "lib/tinygql/version"
-
-Rake::TestTask.new(:test) do |t|
-  t.libs << "test"
-  t.warning = true
-  t.verbose = true
-  t.test_files = FileList["test/**/*_test.rb"]
-end
 
 FILES = [ "lib/tinygql/nodes.rb", "lib/tinygql/visitors.rb" ]
 
-task :test => FILES
+task :tldr => FILES
 
-task default: :test
+task default: :tldr
 
 def extract_nodes source
   require "psych"
@@ -112,12 +105,7 @@ namespace :gem do
     sh "git push --tags"
   end
 
-  Rake::TestTask.new(:test) do |t|
-    t.libs = ["test"]
-    t.warning = true
-    t.verbose = true
-    t.test_files = FileList["test/**/*_test.rb"]
-  end
+  task :test => :tldr
 
   task :install => :build do
     require 'tmpdir'
