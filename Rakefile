@@ -105,7 +105,7 @@ namespace :gem do
     sh "git push --tags"
   end
 
-  task :test => :tldr
+  task :test => :test
 
   task :install => :build do
     require 'tmpdir'
