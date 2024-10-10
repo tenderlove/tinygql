@@ -40,6 +40,15 @@ module TinyGQL
 
     KW_RE = /#{Regexp.union(KEYWORDS.sort)}\b/
 
+    KW_FP3 = KEYWORDS.filter {
+      |w| w.length >= 4
+    }. map {
+      |w| [
+        w.getbyte(1) * 169 + w.getbyte(2) * 13 + w.getbyte(3),
+        w.upcase.to_sym
+      ]
+    }.to_h.freeze
+
     module Literals
       LCURLY =        '{'
       RCURLY =        '}'
@@ -78,28 +87,28 @@ module TinyGQL
     LEAD_BYTES = Array.new(255) { 0 }
 
     module LeadBytes
-      INT = 1
-      KW = 2
-      ELLIPSIS = 3
-      STRING = 4
-      PUNCT = 5
-      IDENT = 6
+      INT = 1 << 0
+      KW = 1 << 1
+      ELLIPSIS = 1 << 2
+      STRING = 1 << 3
+      PUNCT = 1 << 4
+      IDENT = 1 << 5
     end
 
-    10.times { |i| LEAD_BYTES[i.to_s.ord] = LeadBytes::INT }
+    10.times { |i| LEAD_BYTES[i.to_s.ord] |= LeadBytes::INT }
 
-    ("A".."Z").each { |chr| LEAD_BYTES[chr.ord] = LeadBytes::IDENT }
-    ("a".."z").each { |chr| LEAD_BYTES[chr.ord] = LeadBytes::IDENT }
-    LEAD_BYTES['_'.ord] = LeadBytes::IDENT
+    ("A".."Z").each { |chr| LEAD_BYTES[chr.ord] |= LeadBytes::IDENT }
+    ("a".."z").each { |chr| LEAD_BYTES[chr.ord] |= LeadBytes::IDENT }
+    LEAD_BYTES['_'.ord] |= LeadBytes::IDENT
 
-    KEYWORDS.each { |kw| LEAD_BYTES[kw.getbyte(0)] = LeadBytes::KW }
+    KEYWORDS.each { |kw| LEAD_BYTES[kw.getbyte(0)] |= LeadBytes::KW }
 
-    LEAD_BYTES['.'.ord] = LeadBytes::ELLIPSIS
+    LEAD_BYTES['.'.ord] |= LeadBytes::ELLIPSIS
 
-    LEAD_BYTES['"'.ord] = LeadBytes::STRING
+    LEAD_BYTES['"'.ord] |= LeadBytes::STRING
 
     Literals.constants.each_with_object([]) { |n, o|
-      LEAD_BYTES[Literals.const_get(n).ord] = LeadBytes::PUNCT
+      LEAD_BYTES[Literals.const_get(n).ord] |= LeadBytes::PUNCT
     }
 
     QUOTED_STRING = %r{#{QUOTE} ((?:#{STRING_CHAR})*) #{QUOTE}}x
@@ -121,6 +130,7 @@ module TinyGQL
       @string = string
       @scan = StringScanner.new string
       @start = nil
+      @len = nil
     end
 
     attr_reader :start
@@ -147,28 +157,27 @@ module TinyGQL
         @scan.pos += 1
         PUNCT_LUT[lead_byte]
 
-      elsif lead_code == LeadBytes::KW
-        if len = @scan.skip(KW_RE)
-          return :ON if len == 2
-          return :SUBSCRIPTION if len == 12
-
-          pos = @start
-
-          # Second 2 bytes are unique, so we'll hash on those
-          key = (@string.getbyte(pos + 2) << 8) | @string.getbyte(pos + 1)
-
-          KW_LUT[_hash(key)]
-        else
-          @scan.skip(IDENTIFIER)
-          :IDENTIFIER
+      elsif lead_code & LeadBytes::IDENT != 0
+        @len = @scan.skip(IDENTIFIER)
+        if lead_code & LeadBytes::KW != 0 then
+          if @len >= 4 then
+            fp = @string.getbyte(@start+1) * 169 +
+                 @string.getbyte(@start+2) * 13 +
+                 @string.getbyte(@start+3)
+            tk = KW_FP3[fp]
+            if tk then
+              @scan.pos = @start
+              return tk if @scan.skip(KW_RE) == @len
+              @scan.pos = @start + @len
+            end
+          elsif @len == 2 then
+            return :ON if lead_byte == 111 && @string.getbyte(@start+1) == 110
+          end
         end
-
-      elsif lead_code == LeadBytes::IDENT
-        @scan.skip(IDENTIFIER)
         :IDENTIFIER
 
       elsif lead_code == LeadBytes::INT
-        @scan.skip(NUMERIC)
+        @len = @scan.skip(NUMERIC)
         @scan[1] ? :FLOAT : :INT
 
       elsif lead_code == LeadBytes::ELLIPSIS
@@ -179,7 +188,8 @@ module TinyGQL
         :ELLIPSIS
 
       elsif lead_code == LeadBytes::STRING
-        raise unless @scan.skip(BLOCK_STRING) || @scan.skip(QUOTED_STRING)
+        @len = @scan.skip(BLOCK_STRING) || @scan.skip(QUOTED_STRING)
+        raise unless @len
         :STRING
 
       else
@@ -189,7 +199,7 @@ module TinyGQL
     end
 
     def token_value
-      @string.byteslice(@scan.pos - @scan.matched_size, @scan.matched_size)
+      @string.byteslice(@start, @len)
     end
 
     def string_value
@@ -330,43 +340,6 @@ module TinyGQL
 
       # Rebuild the string
       lines.size > 1 ? lines.join("\n") : (lines.first || "".dup)
-    end
-
-    KW_LUT =[:INTERFACE,
-             :MUTATION,
-             :EXTEND,
-             :FALSE,
-             :ENUM,
-             :TRUE,
-             :NULL,
-             nil,
-             nil,
-             nil,
-             nil,
-             nil,
-             nil,
-             nil,
-             :QUERY,
-             nil,
-             nil,
-             :REPEATABLE,
-             :IMPLEMENTS,
-             :INPUT,
-             :TYPE,
-             :SCHEMA,
-             nil,
-             nil,
-             nil,
-             :DIRECTIVE,
-             :UNION,
-             nil,
-             nil,
-             :SCALAR,
-             nil,
-             :FRAGMENT]
-
-    def _hash key
-      (key * 18592990) >> 27 & 0x1f
     end
   end
 end
