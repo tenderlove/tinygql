@@ -14,7 +14,7 @@ end
 # on is too short, and subscription is the longest.
 # The lexer can easily detect them by length, so lets calculate a perfect
 # hash for the rest.
-kws = TinyGQL::Lexer::KEYWORDS - ["on", "subscription"]
+kws = TinyGQL::Lexer::KEYWORDS - ["on"]
 MASK = (1 << bits(kws.length)) - 1
 
 prefixes = kws.map { |word| word[1, 2] }

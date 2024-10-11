@@ -161,10 +161,12 @@ module TinyGQL
         @len = @scan.skip(IDENTIFIER)
         if lead_code & LeadBytes::KW != 0 then
           if @len >= 4 then
-            fp = @string.getbyte(@start+1) * 169 +
-                 @string.getbyte(@start+2) * 13 +
-                 @string.getbyte(@start+3)
-            tk = KW_FP3[fp]
+            key = (@string.getbyte(@start + 2) << 8) + @string.getbyte(@start + 1)
+
+            tk = KW_LUT[
+              (key * 19637591) >> 27 & 0x1f
+            ]
+
             if tk then
               @scan.pos = @start
               return tk if @scan.skip(KW_RE) == @len
@@ -341,5 +343,39 @@ module TinyGQL
       # Rebuild the string
       lines.size > 1 ? lines.join("\n") : (lines.first || "".dup)
     end
+
+    KW_LUT =
+      [nil,
+        :FRAGMENT,
+        nil,
+        nil,
+        nil,
+        :SCHEMA,
+        nil,
+        :SUBSCRIPTION,
+        :INTERFACE,
+        :MUTATION,
+        :EXTEND,
+        nil,
+        :UNION,
+        nil,
+        :ENUM,
+        :TRUE,
+        nil,
+        :REPEATABLE,
+        :IMPLEMENTS,
+        :INPUT,
+        :TYPE,
+        nil,
+        nil,
+        nil,
+        :QUERY,
+        nil,
+        nil,
+        :FALSE,
+        nil,
+        :DIRECTIVE,
+        :NULL,
+        :SCALAR]
   end
 end
