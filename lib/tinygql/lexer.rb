@@ -40,10 +40,10 @@ module TinyGQL
 
     KW_RE = /#{Regexp.union(KEYWORDS.sort)}\b/
 
-    KW_FP3 = KEYWORDS.filter {
-      |w| w.length >= 4
-    }. map {
-      |w| [
+    KW_FP3 = KEYWORDS.filter { |w|
+      w.length >= 4
+    }. map { |w|
+      [
         w.getbyte(1) * 169 + w.getbyte(2) * 13 + w.getbyte(3),
         w.upcase.to_sym
       ]
