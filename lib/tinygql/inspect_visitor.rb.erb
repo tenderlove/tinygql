@@ -1,0 +1,123 @@
+<%-
+  by_name = nodes.to_h { |n| [n.name, n] }
+  all_fields = ->(node) {
+    parent = by_name[node.parent]
+    (parent ? all_fields.(parent) : []) + node.fields
+  }
+-%>
+module TinyGQL
+  # This visitor is responsible for composing the strings that get returned by
+  # the various #inspect methods defined on each of the nodes.  It's a port of
+  # Prism's InspectVisitor.
+  class InspectVisitor
+    # Most of the time, we can simply pass down the indent to the next node.
+    # However, when we are inside a list we want some extra special formatting
+    # when we hit an element in that list. In this case, we have a special
+    # command that replaces the subsequent indent with the given value.
+    class Replace # :nodoc:
+      attr_reader :value
+
+      def initialize(value)
+        @value = value
+      end
+    end
+
+    private_constant :Replace
+
+    # The current prefix string.
+    attr_reader :indent
+
+    # The list of commands that we need to execute in order to compose the
+    # final string.
+    attr_reader :commands
+
+    def initialize(indent = +"")
+      @indent = indent
+      @commands = []
+    end
+
+    # Compose an inspect string for the given node.
+    def self.compose(node)
+      visitor = new
+      node.accept(visitor)
+      visitor.compose
+    end
+
+    # Compose the final string.
+    def compose
+      buffer = +""
+      replace = nil
+
+      until commands.empty?
+        command, indent = *commands.shift
+
+        case command
+        when String
+          buffer << (replace || indent)
+          buffer << command
+          replace = nil
+        when Nodes::Node
+          visitor = InspectVisitor.new(indent)
+          command.accept(visitor)
+          @commands = [*visitor.commands, *@commands]
+        when Replace
+          replace = command.value
+        else
+          raise "Unknown command: #{command.inspect}"
+        end
+      end
+
+      buffer
+    end
+<%- nodes.each do |node| -%>
+<%- fields = all_fields.(node) -%>
+
+    def handle_<%= node.human_name %> node
+      commands << [inspect_node("<%= node.name %>", node), indent]
+      <%- fields.each_with_index do |field, i| -%>
+      inspect_field("<%= field.name %>", node.<%= field.name %>, <%= i == fields.length - 1 %>)
+      <%- end -%>
+    end
+<%- end -%>
+
+    private
+
+    # Compose a header for the given node.
+    def inspect_node(name, node)
+      "@ #{name} (start: #{node.start})\n"
+    end
+
+    # Compose the lines for a single field.  Field values are checked at
+    # runtime because some "literal" fields (like ListValue#value) actually
+    # contain nodes.
+    def inspect_field(name, value, last)
+      branch = last ? "└── " : "├── "
+      prefix = "#{indent}#{last ? "    " : "│   "}"
+
+      case value
+      when nil
+        commands << ["#{branch}#{name}: ∅\n", indent]
+      when Nodes::Node
+        commands << ["#{branch}#{name}:\n", indent]
+        commands << [value, prefix]
+      when Array
+        commands << ["#{branch}#{name}: (length: #{value.length})\n", indent]
+        value.each_with_index do |child, i|
+          if i == value.length - 1
+            commands << [Replace.new("#{prefix}└── "), indent]
+            commands << [inspect_element(child), "#{prefix}    "]
+          else
+            commands << [Replace.new("#{prefix}├── "), indent]
+            commands << [inspect_element(child), "#{prefix}│   "]
+          end
+        end
+      else
+        commands << ["#{branch}#{name}: #{value.inspect}\n", indent]
+      end
+    end
+
+    def inspect_element(child)
+      Nodes::Node === child ? child : "#{child.inspect}\n"
+    end
+  end
+end
