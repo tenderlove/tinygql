@@ -73,13 +73,13 @@ def extract_nodes source
   }
 end
 
-file "lib/tinygql/nodes.rb" => "lib/tinygql/nodes.yml" do |t|
+file "lib/tinygql/nodes.rb" => ["lib/tinygql/nodes.yml", "lib/tinygql/nodes.rb.erb"] do |t|
   nodes = extract_nodes t.source
   erb = ERB.new File.read("lib/tinygql/nodes.rb.erb"), trim_mode: "-"
   File.binwrite t.name, erb.result(binding)
 end
 
-file "lib/tinygql/visitors.rb" => "lib/tinygql/nodes.yml" do |t|
+file "lib/tinygql/visitors.rb" => ["lib/tinygql/nodes.yml", "lib/tinygql/visitors.rb.erb"] do |t|
   nodes = extract_nodes t.source
   erb = ERB.new File.read("lib/tinygql/visitors.rb.erb"), trim_mode: "-"
   File.binwrite t.name, erb.result(binding)

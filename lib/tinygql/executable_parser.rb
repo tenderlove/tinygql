@@ -47,7 +47,7 @@ module TinyGQL
       while !@lexer.done?
         list << definition
       end
-      list
+      list.freeze
     end
 
     def definition
@@ -118,7 +118,7 @@ module TinyGQL
         list << selection
       end
       expect_token(:RCURLY)
-      list
+      list.freeze
     end
 
     def selection
@@ -210,7 +210,7 @@ module TinyGQL
       while at?(:DIR_SIGN)
         list << directive
       end
-      list
+      list.freeze
     end
 
     def directive
@@ -231,7 +231,7 @@ module TinyGQL
         args << argument
       end
       expect_token(:RPAREN)
-      args
+      args.freeze
     end
 
     def argument
@@ -248,7 +248,7 @@ module TinyGQL
         defs << variable_definition
       end
       expect_token(:RPAREN)
-      defs
+      defs.freeze
     end
 
     def variable_definition
@@ -296,7 +296,7 @@ module TinyGQL
         list << Nodes::ObjectField.new(loc, n, value)
       end
       expect_token(:RCURLY)
-      Nodes::ObjectValue.new(start, list)
+      Nodes::ObjectValue.new(start, list.freeze)
     end
 
     def list_value
@@ -307,7 +307,7 @@ module TinyGQL
         list << value
       end
       expect_token(:RBRACKET)
-      Nodes::ListValue.new(loc, list)
+      Nodes::ListValue.new(loc, list.freeze)
     end
 
     def enum_value

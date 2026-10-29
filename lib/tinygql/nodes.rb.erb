@@ -8,8 +8,13 @@ module TinyGQL
       # `start` is the start position of this node in the source document
       attr_reader :start
 
+      # Nodes are frozen once they're built, so a parsed document can be
+      # cached and shared.  Subclasses set their fields before calling this.
+      # The lexer freezes token values and the parser freezes lists, so the
+      # fields are frozen too
       def initialize start
         @start = start
+        freeze
       end
 
       # Return the line of this node given `doc`
@@ -38,10 +43,10 @@ module TinyGQL
       attr_reader <%= node.fields.map { |v| ":" + v.name }.join(", ") %>
 
       def initialize <%= (["pos"] + node.fields.map(&:name)).join(", ") %>
-        super(pos)
         <%- node.fields.each do |field| -%>
         @<%= field.name %> = <%= field.name %>
         <%- end -%>
+        super(pos)
       end
       <%- end -%>
 

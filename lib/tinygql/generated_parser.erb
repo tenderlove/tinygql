@@ -97,7 +97,7 @@ def <%= selection_set_method type.name %>
     end
   end
   expect_token :RCURLY
-  list
+  list.freeze
 end
 
 def <%= field_method type.name %>
@@ -177,6 +177,6 @@ def <%= method %> field_loc
 <%- required.each_with_index do |arg, i| -%>
   missing_argument! <%= lit arg.name %>, <%= lit field.name %>, <%= lit type.name %>, field_loc unless required_<%= i %>
 <%- end -%>
-  args
+  args.freeze
 end
 <%- end -%>
