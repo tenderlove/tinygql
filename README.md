@@ -19,6 +19,14 @@ You can get an AST like this:
 ast = TinyGQL.parse "{ cool }"
 ```
 
+`TinyGQL.parse` accepts any GraphQL document, including schemas.  If you only
+want to accept queries, use `TinyGQL::ExecutableParser`, which parses
+operations and fragments and raises on type system definitions:
+
+```ruby
+ast = TinyGQL::ExecutableParser.parse "{ cool }"
+```
+
 The AST is iterable, so you can use the each method:
 
 ```ruby
@@ -88,6 +96,59 @@ ast.find_all(&:field?).each { |node|
   p node.name => node.line(doc)
 }
 ```
+
+## Schema-specific parsers
+
+TinyGQL can generate a parser for queries against a particular schema.
+The generated parser builds the same AST as `TinyGQL.parse`, but it also
+checks each query against the schema while parsing:
+
+```ruby
+require "tinygql/generator"
+
+schema = <<~GRAPHQL
+  type Query {
+    user(id: ID!): User
+  }
+
+  type User {
+    id: ID!
+    name: String
+    friends: [User!]!
+  }
+GRAPHQL
+
+File.write "user_parser.rb", TinyGQL::Generator.new(schema).generate("UserParser")
+```
+
+The generated file is plain Ruby, so you can check it in and require it like any other file:
+
+```ruby
+require_relative "user_parser"
+
+ast = UserParser.parse "{ user(id: 1) { name friends { name } } }"
+
+# Fields know which type they were selected on
+p ast.find_all(&:field?).map { |f| [f.parent_type, f.name] }
+# => [["Query", "user"], ["User", "name"], ["User", "friends"], ["User", "name"]]
+
+UserParser.parse "{ user(id: 1) { email } }"
+# => TinyGQL::ValidatingParser::ValidationError: Field email does not exist on User line: 1
+
+UserParser.parse "{ user { name } }"
+# => TinyGQL::ValidatingParser::ValidationError: Missing required argument id on Query.user line: 1
+```
+
+You can also generate a parser from the command line:
+
+```
+$ tinygql gen schema.graphql UserParser > user_parser.rb
+```
+
+The parser checks that fields and arguments exist, that required arguments
+are present, that selection sets are used correctly, and that fragments can
+apply where they're spread.  It doesn't check variables, argument value
+types, or field merging yet.
 
 ## LICENSE:
 

@@ -1,0 +1,30 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+USAGE = <<~USAGE
+  usage: tinygql COMMAND [ARGS]
+
+  Commands:
+    gen SCHEMA_FILE CLASS_NAME   Generate a parser for queries against a schema
+USAGE
+
+command, *args = ARGV
+
+case command
+when "gen"
+  unless args.length == 2
+    warn "usage: tinygql gen SCHEMA_FILE CLASS_NAME"
+    exit 1
+  end
+
+  require "tinygql/generator"
+
+  schema_file, class_name = args
+  print TinyGQL::Generator.new(File.read(schema_file)).generate(class_name)
+when "help", "-h", "--help"
+  puts USAGE
+else
+  warn "Unknown command: #{command}" if command
+  warn USAGE
+  exit 1
+end

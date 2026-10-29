@@ -1,0 +1,182 @@
+# Bit positions for object types that belong to an interface or union.
+# Other object types can only overlap with themselves, so they don't need one
+<%- if object_bits.empty? -%>
+OBJECT_BITS = {}.freeze
+<%- else -%>
+OBJECT_BITS = {
+<%- object_bits.each do |name, bit| -%>
+  <%= lit name %> => <%= bit %>,
+<%- end -%>
+}.freeze
+<%- end -%>
+
+# Bitmaps of the object types each interface and union could be, using the
+# positions in OBJECT_BITS
+<%- if abstract_types.empty? -%>
+ABSTRACT_POSSIBLE_TYPES = {}.freeze
+<%- else -%>
+ABSTRACT_POSSIBLE_TYPES = {
+<%- abstract_types.each do |type| -%>
+  <%= lit type.name %> => <%= possible_types_bitmap type.name %>,
+<%- end -%>
+}.freeze
+<%- end -%>
+
+# Maps composite type names to branches in composite_selection_set
+COMPOSITE_TYPES = {
+<%- composite_types.each_with_index do |type, i| -%>
+  <%= lit type.name %> => <%= i %>,
+<%- end -%>
+}.freeze
+
+# Each type's field names map to branch numbers in its field_for_* method.
+# Dispatching on an Integer is faster than `case` with String keys, which
+# YJIT compiles to a comparison against each key in turn.
+<%- composite_types.each_with_index do |type, i| -%>
+<%- simple, other = selectable_fields(type).partition { |f| f.arguments.empty? && !composite?(f.type_name) } -%>
+<%- if i > 0 -%>
+
+<%- end -%>
+<%= fields_constant type.name %> = {
+<%- simple.each do |field| -%>
+  <%= lit field.name %> => 0,
+<%- end -%>
+<%- other.each_with_index do |field, i| -%>
+  <%= lit field.name %> => <%= i + 1 %>,
+<%- end -%>
+}.freeze
+<%- end -%>
+
+private
+
+def composite_type? type
+  COMPOSITE_TYPES.key?(type)
+end
+
+def object_bit type
+  OBJECT_BITS[type]
+end
+
+def abstract_possible_types type
+  ABSTRACT_POSSIBLE_TYPES[type]
+end
+
+def operation_selection_set type
+  case type
+  when nil, "query" then <%= selection_set_method schema.roots["query"] %>
+<%- %w{ mutation subscription }.each do |op| -%>
+<%- if schema.roots[op] -%>
+  when <%= lit op %> then <%= selection_set_method schema.roots[op] %>
+<%- end -%>
+<%- end -%>
+  else
+    unsupported_operation! type
+  end
+end
+
+# Call sites stay monomorphic for the JIT, unlike dispatching with `send`
+def composite_selection_set type, loc
+  case COMPOSITE_TYPES[type]
+<%- composite_types.each_with_index do |type, i| -%>
+  when <%= i %> then <%= selection_set_method type.name %>
+<%- end -%>
+  else
+    unknown_type! type, loc
+  end
+end
+<%- composite_types.each do |type| -%>
+
+def <%= selection_set_method type.name %>
+  expect_token :LCURLY
+  list = []
+  while !at?(:RCURLY)
+    list << if at?(:ELLIPSIS)
+      schema_selection_fragment <%= lit type.name %>
+    else
+      <%= field_method type.name %>
+    end
+  end
+  expect_token :RCURLY
+  list
+end
+
+def <%= field_method type.name %>
+  loc = pos
+  name = self.name
+  aliaz = nil
+
+  if at?(:COLON)
+    accept_token
+    aliaz = name
+    name = self.name
+  end
+
+  case <%= fields_constant type.name %>[name]
+<%- simple, other = selectable_fields(type).partition { |f| f.arguments.empty? && !composite?(f.type_name) } -%>
+  when 0 # <%= simple.map(&:name).join(", ") %>
+    return leaf_field(loc, aliaz, name, <%= lit type.name %>)
+<%- other.each_with_index do |field, i| -%>
+  when <%= i + 1 %> # <%= field.name %>
+<%- if field.arguments.empty? -%>
+    no_arguments! name, <%= lit type.name %>
+    arguments = nil
+<%- else -%>
+<%- required = field.arguments.find(&:required) -%>
+    arguments = if at?(:LPAREN)
+      <%= argument_method type, field %> loc
+<%- if required -%>
+    else
+      missing_argument! <%= lit required.name %>, name, <%= lit type.name %>, loc
+<%- end -%>
+    end
+<%- end -%>
+    directives = if at?(:DIR_SIGN); self.directives; end
+<%- if composite?(field.type_name) -%>
+    missing_selection_set! name, <%= lit type.name %>, loc unless at?(:LCURLY)
+    selection_set = <%= selection_set_method field.type_name %>
+<%- else -%>
+    leaf_selection_set! name, <%= lit type.name %>, loc if at?(:LCURLY)
+    selection_set = nil
+<%- end -%>
+<%- end -%>
+  else
+    unknown_field! name, <%= lit type.name %>, loc
+  end
+
+  TinyGQL::Nodes::Field.new(loc, aliaz, name, arguments, directives, selection_set, <%= lit type.name %>)
+end
+<%- end -%>
+<%- @argument_methods.each do |method, type, field| -%>
+<%- required = field.arguments.select(&:required) -%>
+<%- optional = field.arguments.reject(&:required) -%>
+
+# Arguments for <%= type.name %>.<%= field.name %>
+def <%= method %> field_loc
+  expect_token :LPAREN
+<%- required.each_index do |i| -%>
+  required_<%= i %> = false
+<%- end -%>
+  args = []
+  while !at?(:RPAREN)
+    loc = pos
+    name = self.name
+    case name
+<%- required.each_with_index do |arg, i| -%>
+    when <%= lit arg.name %> then required_<%= i %> = true
+<%- end -%>
+<%- if optional.any? -%>
+    when <%= optional.map { |arg| lit arg.name }.join(", ") %>
+<%- end -%>
+    else
+      unknown_argument! name, <%= lit field.name %>, <%= lit type.name %>, loc
+    end
+    expect_token :COLON
+    args << TinyGQL::Nodes::Argument.new(loc, name, value)
+  end
+  expect_token :RPAREN
+<%- required.each_with_index do |arg, i| -%>
+  missing_argument! <%= lit arg.name %>, <%= lit field.name %>, <%= lit type.name %>, field_loc unless required_<%= i %>
+<%- end -%>
+  args
+end
+<%- end -%>
