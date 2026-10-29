@@ -46,3 +46,13 @@ extend input AnnotatedInput @onInputObjectType {
 }
 
 extend input NeatInput @onInputObjectType
+
+extend schema @onSchema
+
+extend schema @onSchema {
+  subscription: SubscriptionType
+}
+
+extend schema {
+  mutation: MutationType
+}

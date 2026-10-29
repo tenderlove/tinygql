@@ -344,5 +344,129 @@ directive @skip(if: Boolean!) on FIELD | FRAGMENT_SPREAD | INLINE_FRAGMENT
       assert ast.find { |x| x.input_object_type_extension? && x.name == "AnnotatedInput" }
       assert ast.find { |x| x.input_object_type_extension? && x.name == "NeatInput" }
     end
+
+    def test_schema_extension
+      ast = Parser.parse File.read(File.join(__dir__, "schema-extensions.graphql"))
+      nodes = ast.find_all(&:schema_extension?)
+      assert_equal 3, nodes.length
+
+      directives_only, both, ops_only = nodes
+
+      assert_equal ["onSchema"], directives_only.directives.map(&:name)
+      assert_nil directives_only.root_operation_definitions
+
+      assert_equal ["onSchema"], both.directives.map(&:name)
+      assert_equal ["subscription"], both.root_operation_definitions.map(&:operation_type)
+      assert_equal ["SubscriptionType"], both.root_operation_definitions.map { |x| x.named_type.name }
+
+      assert_nil ops_only.directives
+      assert_equal ["mutation"], ops_only.root_operation_definitions.map(&:operation_type)
+    end
+
+    def test_non_null_types
+      ast = Parser.parse "type A { a: Int! b: [Int!]! c: Int }"
+      a, b, c = ast.find(&:object_type_definition?).fields_definition.map(&:type)
+
+      assert a.not_null_type?
+      assert_equal "Int", a.type.name
+
+      assert b.not_null_type?
+      assert b.type.list_type?
+      assert b.type.type.not_null_type?
+      assert_equal "Int", b.type.type.type.name
+
+      assert c.named_type?
+    end
+
+    def test_interface_implements_interfaces
+      ast = Parser.parse "interface A implements B & C { a: Int }"
+      node = ast.find(&:interface_type_definition?)
+      assert_equal ["B", "C"], node.implements_interfaces.map(&:name)
+    end
+
+    def test_implements_leading_ampersand
+      ast = Parser.parse "type A implements & B & C { a: Int }"
+      node = ast.find(&:object_type_definition?)
+      assert_equal ["B", "C"], node.implements_interfaces.map(&:name)
+    end
+
+    def test_implements_does_not_consume_next_definition
+      ast = Parser.parse "type A implements B\ntype C { a: Int }"
+      a, c = ast.definitions
+      assert_equal ["B"], a.implements_interfaces.map(&:name)
+      assert_equal "C", c.name
+    end
+
+    def test_union_leading_pipe
+      ast = Parser.parse "union U = | A | B"
+      node = ast.find(&:union_type_definition?)
+      assert_equal ["A", "B"], node.union_member_types.map(&:name)
+    end
+
+    def test_repeatable_directive
+      ast = Parser.parse "directive @a repeatable on FIELD\ndirective @b on FIELD"
+      a, b = ast.definitions
+      assert a.repeatable
+      refute b.repeatable
+    end
+
+    def test_directive_locations_leading_pipe
+      ast = Parser.parse "directive @a on | FIELD | VARIABLE_DEFINITION"
+      node = ast.find(&:directive_definition?)
+      assert_equal ["FIELD", "VARIABLE_DEFINITION"], node.directive_locations.map(&:name)
+      assert node.directive_locations.all?(&:executable_directive_location?)
+    end
+
+    def test_variable_directives
+      ast = Parser.parse "query Q($a: Int = 1 @foo, $b: Int) { a }"
+      a, b = ast.find(&:operation_definition?).variable_definitions
+      assert_equal ["foo"], a.directives.map(&:name)
+      assert_nil b.directives
+    end
+
+    def test_keywords_as_names
+      keywords = Lexer::KEYWORDS - ["on"]
+      keywords.each do |kw|
+        ast = Parser.parse "{ #{kw}(#{kw}: 1) #{kw}: a ...#{kw} }"
+        field, aliased, spread = ast.find(&:operation_definition?).selection_set
+        assert_equal kw, field.name
+        assert_equal kw, field.arguments.first.name
+        assert_equal kw, aliased.aliaz
+        assert_equal kw, spread.fragment_name
+
+        ast = Parser.parse "query #{kw} { a }\nfragment #{kw} on #{kw} { a }\ntype #{kw} { #{kw}: #{kw} }"
+        op, frag, type = ast.definitions
+        assert_equal kw, op.name
+        assert_equal kw, frag.fragment_name
+        assert_equal kw, frag.type_condition.named_type.name
+        assert_equal kw, type.name
+        assert_equal kw, type.fields_definition.first.name
+        assert_equal kw, type.fields_definition.first.type.name
+      end
+    end
+
+    def test_keywords_as_enum_values
+      ast = Parser.parse "enum A { type query on }"
+      node = ast.find(&:enum_type_definition?)
+      assert_equal ["type", "query", "on"], node.enum_value_definition.map { |x| x.enum_value.value }
+
+      ast = Parser.parse "{ a(b: type) }"
+      value = ast.find(&:argument?).value
+      assert value.enum_value?
+      assert_equal "type", value.value
+    end
+
+    def test_reserved_names
+      assert_raises(Parser::UnexpectedToken) { Parser.parse "fragment on on A { a }" }
+      assert_raises(Parser::UnexpectedToken) { Parser.parse "enum A { true }" }
+      assert_raises(Parser::UnexpectedToken) { Parser.parse "enum A { null }" }
+    end
+
+    def test_boolean_and_null_positions
+      doc = "{ a(b: true, c: null) }"
+      b, c = Parser.parse(doc).find_all(&:argument?).map(&:value)
+      assert_equal doc.index("true"), b.start
+      assert_equal doc.index("null"), c.start
+    end
   end
 end
