@@ -54,6 +54,7 @@ nodes:
       - arguments?: list
       - directives?: list
       - selection_set?: list
+      - parent_type?: literal
 
   - name: ObjectField
     fields:

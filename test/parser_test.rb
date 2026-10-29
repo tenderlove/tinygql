@@ -468,5 +468,15 @@ directive @skip(if: Boolean!) on FIELD | FRAGMENT_SPREAD | INLINE_FRAGMENT
       assert_equal doc.index("true"), b.start
       assert_equal doc.index("null"), c.start
     end
+
+    def test_executable_parser
+      doc = File.read(File.join(__dir__, "kitchen-sink.graphql"))
+      assert_equal Parser.parse(doc).map { |n| [n.class, n.start] },
+        ExecutableParser.parse(doc).map { |n| [n.class, n.start] }
+
+      ["type A { a: Int }", "extend type A { b: Int }", "\"desc\" scalar A", "schema { query: A }"].each do |schema|
+        assert_raises(Parser::UnexpectedToken) { ExecutableParser.parse schema }
+      end
+    end
   end
 end

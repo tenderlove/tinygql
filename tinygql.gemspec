@@ -12,6 +12,7 @@ Gem::Specification.new do |s|
     "lib/tinygql/visitors.rb",
   ]
   s.test_files  = s.files.grep(%r{^test/})
+  s.executables = ["tinygql"]
   s.homepage    = "https://github.com/tenderlove/tinygql"
   s.license     = "Apache-2.0"
 
