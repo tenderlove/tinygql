@@ -2,3 +2,4 @@ lib/tinygql/nodes.rb
 lib/tinygql/visitors.rb
 Gemfile.lock
 pkg
+lib/tinygql/inspect_visitor.rb

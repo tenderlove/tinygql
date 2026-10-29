@@ -2,7 +2,7 @@ require "bundler/gem_tasks"
 require "tldr/rake"
 require_relative "lib/tinygql/version"
 
-FILES = [ "lib/tinygql/nodes.rb", "lib/tinygql/visitors.rb" ]
+FILES = [ "lib/tinygql/nodes.rb", "lib/tinygql/visitors.rb", "lib/tinygql/inspect_visitor.rb" ]
 
 task :tldr => FILES
 
@@ -82,6 +82,12 @@ end
 file "lib/tinygql/visitors.rb" => "lib/tinygql/nodes.yml" do |t|
   nodes = extract_nodes t.source
   erb = ERB.new File.read("lib/tinygql/visitors.rb.erb"), trim_mode: "-"
+  File.binwrite t.name, erb.result(binding)
+end
+
+file "lib/tinygql/inspect_visitor.rb" => ["lib/tinygql/nodes.yml", "lib/tinygql/inspect_visitor.rb.erb"] do |t|
+  nodes = extract_nodes t.source
+  erb = ERB.new File.read("lib/tinygql/inspect_visitor.rb.erb"), trim_mode: "-"
   File.binwrite t.name, erb.result(binding)
 end
 
