@@ -33,6 +33,17 @@ module TinyGQL
       assert_equal [:IDENTIFIER, "lol"], lexer.next_token
     end
 
+    def test_escaped_backslash_before_u
+      lexer = Lexer.new '"\\\\u0051" "\\u0051\\\\n"'
+      assert_equal [:STRING, '\\u0051'], lexer.next_token
+      assert_equal [:STRING, 'Q\\n'], lexer.next_token
+    end
+
+    def test_block_string_whitespace_only_boundary_lines
+      lexer = Lexer.new %("""\n    \n  hello\n    \n  \t\n""")
+      assert_equal [:STRING, "hello"], lexer.next_token
+    end
+
     def test_multiline_comment
       str = "hello\n# foo\n# lol \nlol"
       lexer = Lexer.new str
