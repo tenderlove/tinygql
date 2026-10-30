@@ -202,5 +202,25 @@ eod
 
       assert_equal [:INT, :ELLIPSIS, :INT], toks
     end
+
+    def test_lookup_tables_are_frozen
+      assert_predicate Lexer::LEAD_BYTES, :frozen?
+      assert_predicate Lexer::PUNCT_LUT, :frozen?
+      assert_predicate Lexer::ESCAPES_REPLACE, :frozen?
+    end
+
+    def test_parse_in_a_ractor
+      skip "needs Ractor" unless defined?(Ractor) && RUBY_ENGINE == "ruby"
+
+      warn = Warning[:experimental]
+      Warning[:experimental] = false
+      doc = '{ field(a: 1, b: 1.5, c: "x\\ny", d: [ENUM]) { ... on T { f } } }'
+      ractor = Ractor.new(doc) { |d| Parser.parse(d).definitions.first.selection_set.first.arguments.map { _1.value.value } }
+      value = ractor.respond_to?(:value) ? ractor.value : ractor.take
+      assert_equal "x\ny", value[2]
+      assert_equal ["1", "1.5"], value[0, 2]
+    ensure
+      Warning[:experimental] = warn unless warn.nil?
+    end
   end
 end
