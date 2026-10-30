@@ -136,7 +136,7 @@ module TinyGQL
         accept_token
         list << directive_location
       end
-      list
+      list.freeze
     end
 
     def directive_location
@@ -192,7 +192,7 @@ module TinyGQL
         list << input_value_definition
       end
       expect_token :RCURLY
-      list
+      list.freeze
     end
 
     def enum_type_definition desc
@@ -211,7 +211,7 @@ module TinyGQL
         list << enum_value_definition
       end
       expect_token :RCURLY
-      list
+      list.freeze
     end
 
     def enum_value_definition
@@ -247,7 +247,7 @@ module TinyGQL
         accept_token
         list << named_type
       end
-      list
+      list.freeze
     end
 
     def interface_type_definition desc
@@ -278,7 +278,7 @@ module TinyGQL
         list << field_definition
       end
       expect_token :RCURLY
-      list
+      list.freeze
     end
 
     def field_definition
@@ -300,7 +300,7 @@ module TinyGQL
         list << input_value_definition
       end
       expect_token :RPAREN
-      list
+      list.freeze
     end
 
     def input_value_definition
@@ -328,7 +328,7 @@ module TinyGQL
         end
         list << self.named_type
       end
-      list
+      list.freeze
     end
 
     def schema_definition desc
@@ -350,7 +350,7 @@ module TinyGQL
         expect_token :COLON
         list << Nodes::RootOperationTypeDefinition.new(loc, operation_type, named_type)
       end
-      list
+      list.freeze
     end
   end
 end

@@ -215,20 +215,22 @@ module TinyGQL
       end
     end
 
+    # Token values are frozen so the nodes built from them can be shared
     def token_value
-      @string.byteslice(@start, @len)
+      @string.byteslice(@start, @len).freeze
     end
 
     def string_value
-      str = token_value
+      # Unescaping modifies the string, so freeze it once it's done
+      str = @string.byteslice(@start, @len)
       block = str.start_with?('"""')
       # Strip only the delimiters: a string can end with an escaped quote
       str = block ? str.byteslice(3, str.bytesize - 6) : str.byteslice(1, str.bytesize - 2)
 
       if block
-        emit_block str
+        emit_block(str).freeze
       else
-        emit_string str
+        emit_string(str).freeze
       end
     end
 
@@ -237,9 +239,9 @@ module TinyGQL
       val = case tok
       when :STRING then string_value
       when :ELLIPSIS then
-        @string.byteslice(@scan.pos - 3, 3)
+        @string.byteslice(@scan.pos - 3, 3).freeze
       when *Literals.constants
-        @string.byteslice(@scan.pos - 1, 1)
+        @string.byteslice(@scan.pos - 1, 1).freeze
       else
         token_value
       end
