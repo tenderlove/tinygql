@@ -205,7 +205,8 @@ module TinyGQL
     def string_value
       str = token_value
       block = str.start_with?('"""')
-      str.gsub!(/\A"*|"*\z/, '')
+      # Strip only the delimiters: a string can end with an escaped quote
+      str = block ? str.byteslice(3, str.bytesize - 6) : str.byteslice(1, str.bytesize - 2)
 
       if block
         emit_block str
@@ -276,12 +277,12 @@ module TinyGQL
 
     def emit_string(value)
       if !value.valid_encoding? || !value.match?(VALID_STRING)
-        emit(:BAD_UNICODE_ESCAPE, value)
+        raise "Bad unicode escape in string"
       else
         replace_escaped_characters_in_place(value)
 
         if !value.valid_encoding?
-          emit(:BAD_UNICODE_ESCAPE, value)
+          raise "Bad unicode escape in string"
         else
           value
         end
