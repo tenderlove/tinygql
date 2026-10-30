@@ -97,6 +97,23 @@ ast.find_all(&:field?).each { |node|
 }
 ```
 
+## Limiting document size
+
+Fragments can spread other fragments more than once, so a small document can
+expand to a huge one.  `TinyGQL::Expansion` measures the expanded size without
+expanding anything, and raises if it's over a limit:
+
+```ruby
+ast = TinyGQL.parse "{ ...F ...F } fragment F on Query { id }"
+TinyGQL::Expansion.check(ast, 100_000).value # => 9
+TinyGQL::Expansion.check(ast, 8)
+# => TinyGQL::Expansion::LimitExceeded: Maximum expansion limit of 8 exceeded
+```
+
+Scores match [Bluejay's](https://github.com/Shopify/bluejay-rb) `max_expansion`
+check.  Fragment cycles are cut where they repeat, and `Score#cyclic?` tells you
+the document has one.
+
 ## Schema-specific parsers
 
 TinyGQL can generate a parser for queries against a particular schema.
