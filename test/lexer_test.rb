@@ -63,6 +63,45 @@ module TinyGQL
       assert_equal [:FLOAT, "1.2"], lexer.next_token
     end
 
+    def test_negative_numbers
+      lexer = Lexer.new "-1 -0 -1.5 -2e3 -12.5E-3"
+      assert_equal [:INT, "-1"], lexer.next_token
+      assert_equal [:INT, "-0"], lexer.next_token
+      assert_equal [:FLOAT, "-1.5"], lexer.next_token
+      assert_equal [:FLOAT, "-2e3"], lexer.next_token
+      assert_equal [:FLOAT, "-12.5E-3"], lexer.next_token
+      assert_nil lexer.next_token
+    end
+
+    def test_exponent_floats
+      lexer = Lexer.new "1e3 1.5e+3 0.5"
+      assert_equal [:FLOAT, "1e3"], lexer.next_token
+      assert_equal [:FLOAT, "1.5e+3"], lexer.next_token
+      assert_equal [:FLOAT, "0.5"], lexer.next_token
+    end
+
+    def test_lone_minus
+      lexer = Lexer.new "- 1"
+      assert_equal [:UNKNOWN_CHAR, "-"], lexer.next_token
+      assert_equal [:INT, "1"], lexer.next_token
+    end
+
+    def test_numbers_dont_allocate
+      skip "needs MRI's GC.stat" unless RUBY_ENGINE == "ruby"
+
+      lexer = Lexer.new "123 4.5 -6e7 " * 100
+      lexer.advance # warm up
+      before = GC.stat(:total_allocated_objects)
+      while lexer.advance; end
+      assert_operator GC.stat(:total_allocated_objects) - before, :<, 10
+    end
+
+    def test_negative_argument
+      doc = Parser.parse "{ field(int: -1, float: -1.5) }"
+      args = doc.definitions.first.selection_set.first.arguments
+      assert_equal ["-1", "-1.5"], args.map { _1.value.value }
+    end
+
     def test_block_string
       doc = <<-eos
 """
