@@ -231,9 +231,13 @@ module TinyGQL
 
     # Replace any escaped unicode or whitespace with the _actual_ characters
     # To avoid allocating more strings, this modifies the string passed into it
+    # One pass over the escapes, so a backslash produced by `\\` is never
+    # read again as the start of another escape
     def replace_escaped_characters_in_place(raw_string)
-      raw_string.gsub!(ESCAPES, ESCAPES_REPLACE)
-      raw_string.gsub!(UTF_8) do |_matched_str|
+      raw_string.gsub!(ESCAPE_OR_UTF_8) do |matched_str|
+        simple = ESCAPES_REPLACE[matched_str]
+        next simple if simple
+
         codepoint_1 = ($1 || $2).to_i(16)
         codepoint_2 = $3
 
@@ -268,6 +272,8 @@ module TinyGQL
     }
     UTF_8 = /\\u(?:([\dAa-f]{4})|\{([\da-f]{4,})\})(?:\\u([\dAa-f]{4}))?/i
     VALID_STRING = /\A(?:[^\\]|#{ESCAPES}|#{UTF_8})*\z/o
+    ESCAPE_OR_UTF_8 = /#{ESCAPES}|#{UTF_8}/
+    BLANK_LINE = /\A[ \t]*\z/
 
     def emit_block(value)
       value = trim_whitespace(value)
@@ -330,11 +336,11 @@ module TinyGQL
         end
       end
 
-      # Remove leading & trailing blank lines
-      while lines.size > 0 && lines[0].empty?
+      # Remove leading & trailing lines that are blank or only whitespace
+      while lines.size > 0 && lines[0].match?(BLANK_LINE)
         lines.shift
       end
-      while lines.size > 0 && lines[-1].empty?
+      while lines.size > 0 && lines[-1].match?(BLANK_LINE)
         lines.pop
       end
 
