@@ -114,6 +114,24 @@ module TinyGQL
       assert_equal :STRING, lexer.next_token.first
     end
 
+    def test_string_ending_in_escaped_quote
+      lexer = Lexer.new '"a\\"" "\\"" "" "x\\\\"'
+      assert_equal [:STRING, 'a"'], lexer.next_token
+      assert_equal [:STRING, '"'], lexer.next_token
+      assert_equal [:STRING, ""], lexer.next_token
+      assert_equal [:STRING, 'x\\'], lexer.next_token
+    end
+
+    def test_block_string_value
+      lexer = Lexer.new %("""\n  hello\n    world\n""")
+      assert_equal [:STRING, "hello\n  world"], lexer.next_token
+    end
+
+    def test_bad_unicode_escape
+      lexer = Lexer.new '"\\uD800"'
+      assert_raises(RuntimeError) { lexer.next_token }
+    end
+
     def test_tokenize
       lexer = Lexer.new "on"
       token = lexer.next_token
