@@ -82,7 +82,7 @@ module TinyGQL
 
     PUNCT_LUT = Literals.constants.each_with_object([]) { |n, o|
       o[Literals.const_get(n).ord] = n
-    }
+    }.freeze
 
     LEAD_BYTES = Array.new(255) { 0 }
 
@@ -110,6 +110,9 @@ module TinyGQL
     Literals.constants.each_with_object([]) { |n, o|
       LEAD_BYTES[Literals.const_get(n).ord] |= LeadBytes::PUNCT
     }
+
+    # Frozen lookup tables can be read from any Ractor
+    LEAD_BYTES.freeze
 
     QUOTED_STRING = %r{#{QUOTE} ((?:#{STRING_CHAR})*) #{QUOTE}}x
     BLOCK_STRING = %r{
@@ -269,7 +272,7 @@ module TinyGQL
       "\\n" => "\n",
       "\\r" => "\r",
       "\\t" => "\t",
-    }
+    }.freeze
     UTF_8 = /\\u(?:([\dAa-f]{4})|\{([\da-f]{4,})\})(?:\\u([\dAa-f]{4}))?/i
     VALID_STRING = /\A(?:[^\\]|#{ESCAPES}|#{UTF_8})*\z/o
     ESCAPE_OR_UTF_8 = /#{ESCAPES}|#{UTF_8}/
