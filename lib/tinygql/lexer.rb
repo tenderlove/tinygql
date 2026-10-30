@@ -14,7 +14,8 @@ module TinyGQL
     INT =           /[-]?(?:[0]|[1-9][0-9]*)/
     FLOAT_DECIMAL = /[.][0-9]+/
     FLOAT_EXP =     /[eE][+-]?[0-9]+/
-    NUMERIC =  /#{INT}(#{FLOAT_DECIMAL}#{FLOAT_EXP}|#{FLOAT_DECIMAL}|#{FLOAT_EXP})?/
+    FLOAT_PART = /#{FLOAT_DECIMAL}#{FLOAT_EXP}|#{FLOAT_DECIMAL}|#{FLOAT_EXP}/
+    NUMERIC =  /#{INT}(#{FLOAT_PART})?/
 
     KEYWORDS = [
       "on",
@@ -96,6 +97,7 @@ module TinyGQL
     end
 
     10.times { |i| LEAD_BYTES[i.to_s.ord] |= LeadBytes::INT }
+    LEAD_BYTES['-'.ord] |= LeadBytes::INT
 
     ("A".."Z").each { |chr| LEAD_BYTES[chr.ord] |= LeadBytes::IDENT }
     ("a".."z").each { |chr| LEAD_BYTES[chr.ord] |= LeadBytes::IDENT }
@@ -177,8 +179,20 @@ module TinyGQL
         :IDENTIFIER
 
       elsif lead_code == LeadBytes::INT
-        @len = @scan.skip(NUMERIC)
-        @scan[1] ? :FLOAT : :INT
+        # Two skips instead of one regex with a capture group: reading the
+        # group to tell an INT from a FLOAT would allocate a String
+        @len = @scan.skip(INT)
+        unless @len # a `-` that doesn't start a number
+          @scan.pos += 1
+          @len = 1
+          return :UNKNOWN_CHAR
+        end
+        if (frac = @scan.skip(FLOAT_PART))
+          @len += frac
+          :FLOAT
+        else
+          :INT
+        end
 
       elsif lead_code == LeadBytes::ELLIPSIS
         2.times do |i|
