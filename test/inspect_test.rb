@@ -23,11 +23,13 @@ module TinyGQL
                         │       ├── name: "b"
                         │       └── value:
                         │           @ ListValue (start: 7)
-                        │           └── value: (length: 2)
-                        │               ├── @ IntValue (start: 8)
-                        │               │   └── value: "1"
-                        │               └── @ Variable (start: 11)
-                        │                   └── name: "c"
+                        │           ├── value: (length: 2)
+                        │           │   ├── @ IntValue (start: 8)
+                        │           │   │   ├── value: "1"
+                        │           │   │   └── coerced: ∅
+                        │           │   └── @ Variable (start: 11)
+                        │           │       └── name: "c"
+                        │           └── coerced: ∅
                         ├── directives: (length: 1)
                         │   └── @ Directive (start: 16)
                         │       ├── name: "d"

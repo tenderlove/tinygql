@@ -38,9 +38,15 @@ nodes:
     - default_value?
     - directives?: list
 
+  # `coerced` is the frozen Ruby value a generated parser's scalars coerced
+  # a literal to.  Scalars and enums have one.  Lists and input objects are
+  # made of their items, so only a custom scalar's list or object literal,
+  # like a JSON scalar's, has one.  It's nil for null, and for documents
+  # parsed without a schema
   - name: Value
     fields:
       - value: literal
+      - coerced?: literal
 
   - name: Argument
     fields:
@@ -85,6 +91,7 @@ nodes:
   - name: ObjectValue
     fields:
       - values: list
+      - coerced?: literal
 
   - name: Directive
     fields:

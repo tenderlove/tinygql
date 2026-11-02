@@ -8,17 +8,44 @@ module TinyGQL
   class Schema
     class Error < StandardError; end
 
-    # `kind` is one of :object, :interface, :union, :scalar, :enum, or :input
-    Type = Struct.new(:kind, :name, :fields, :interfaces, :members) do
+    # `kind` is one of :object, :interface, :union, :scalar, :enum, or :input.
+    # `fields` maps names to Fields for objects and interfaces, and to
+    # InputValues for input objects.  `values` are an enum's value names
+    Type = Struct.new(:kind, :name, :fields, :interfaces, :members, :values) do
       def composite?; kind == :object || kind == :interface || kind == :union; end
+      def input?; kind == :scalar || kind == :enum || kind == :input; end
     end
 
-    # `type_name` is the named type with list and non-null wrappers removed
-    Field = Struct.new(:name, :arguments, :type_name)
+    # `type` is the field's type node, like `[User!]!`.  `type_name` is the
+    # named type with list and non-null wrappers removed
+    Field = Struct.new(:name, :arguments, :type) do
+      def type_name; Schema.named_type(type); end
+    end
 
-    Argument = Struct.new(:name, :required)
+    # An argument or input object field.  `type` is a type node, and
+    # `default_value` is a value node or nil
+    InputValue = Struct.new(:name, :type, :default_value) do
+      def required; type.not_null_type? && default_value.nil?; end
+    end
 
     BUILTIN_SCALARS = %w{ Int Float String Boolean ID }.freeze
+
+    # The type name with list and non-null wrappers removed
+    def self.named_type type
+      type = type.type until type.named_type?
+      type.name
+    end
+
+    # The type as it's written in GraphQL, like "[User!]!"
+    def self.type_string type
+      if type.named_type?
+        type.name
+      elsif type.list_type?
+        "[#{type_string(type.type)}]"
+      else
+        "#{type_string(type.type)}!"
+      end
+    end
 
     def self.parse sdl
       new Parser.parse(sdl)
@@ -32,7 +59,7 @@ module TinyGQL
 
     def initialize document
       @types = {}
-      BUILTIN_SCALARS.each { |name| @types[name] = Type.new(:scalar, name, {}, [], []) }
+      BUILTIN_SCALARS.each { |name| @types[name] = Type.new(:scalar, name, {}, [], [], []) }
 
       roots = nil
       extensions = []
@@ -51,18 +78,18 @@ module TinyGQL
         when Nodes::ScalarTypeDefinition
           add_type :scalar, defn.name
         when Nodes::EnumTypeDefinition
-          add_type :enum, defn.name
+          add_type :enum, defn.name, {}, [], [], enum_values(defn.enum_value_definition)
         when Nodes::InputObjectTypeDefinition
-          add_type :input, defn.name
+          add_type :input, defn.name, input_values(defn.input_fields_definition)
         when Nodes::SchemaExtension,
              Nodes::ObjectTypeExtension,
              Nodes::InterfaceTypeExtension,
-             Nodes::UnionTypeExtension
-          extensions << defn
-        when Nodes::DirectiveDefinition,
-             Nodes::ScalarTypeExtension,
+             Nodes::UnionTypeExtension,
              Nodes::EnumTypeExtension,
              Nodes::InputObjectTypeExtension
+          extensions << defn
+        when Nodes::DirectiveDefinition,
+             Nodes::ScalarTypeExtension
           # These don't affect which queries can be parsed
         else
           raise Error, "Unexpected #{defn.class.name.split("::").last} in schema"
@@ -107,11 +134,11 @@ module TinyGQL
 
     private
 
-    def add_type kind, name, fields = {}, interfaces = [], members = []
+    def add_type kind, name, fields = {}, interfaces = [], members = [], values = []
       # Schema dumps often declare the built in scalars too
       return if kind == :scalar && BUILTIN_SCALARS.include?(name)
       raise Error, "Duplicate type #{name}" if @types.key?(name)
-      @types[name] = Type.new(kind, name, fields, interfaces, members)
+      @types[name] = Type.new(kind, name, fields, interfaces, members, values)
     end
 
     def extend_type ext
@@ -122,11 +149,24 @@ module TinyGQL
                  when Nodes::ObjectTypeExtension then :object
                  when Nodes::InterfaceTypeExtension then :interface
                  when Nodes::UnionTypeExtension then :union
+                 when Nodes::EnumTypeExtension then :enum
+                 when Nodes::InputObjectTypeExtension then :input
                  end
       raise Error, "Cannot extend #{type.kind} #{type.name} as #{expected}" unless type.kind == expected
 
-      if expected == :union
+      case expected
+      when :union
         type.members.concat names(ext.union_member_types)
+      when :enum
+        enum_values(ext.enum_value_definition).each do |value|
+          raise Error, "Duplicate value #{type.name}.#{value}" if type.values.include?(value)
+          type.values << value
+        end
+      when :input
+        input_values(ext.input_fields_definition).each do |name, field|
+          raise Error, "Duplicate field #{type.name}.#{name}" if type.fields.key?(name)
+          type.fields[name] = field
+        end
       else
         fields(ext.fields_definition).each do |name, field|
           raise Error, "Duplicate field #{type.name}.#{name}" if type.fields.key?(name)
@@ -146,16 +186,30 @@ module TinyGQL
     def fields defs
       (defs || []).each_with_object({}) { |d, h|
         raise Error, "Duplicate field #{d.name}" if h.key?(d.name)
-        args = (d.arguments_definition || []).map { |a|
-          Argument.new(a.name, a.type.not_null_type? && a.default_value.nil?)
-        }
-        h[d.name] = Field.new(d.name, args, named_type(d.type))
+        h[d.name] = Field.new(d.name, input_values(d.arguments_definition).values, d.type)
       }
     end
 
-    def named_type type
-      type = type.type until type.named_type?
-      type.name
+    def input_values defs
+      (defs || []).each_with_object({}) { |d, h|
+        raise Error, "Duplicate input value #{d.name}" if h.key?(d.name)
+        h[d.name] = InputValue.new(d.name, d.type, d.default_value)
+      }
+    end
+
+    def enum_values defs
+      values = (defs || []).map { |d| d.enum_value.value }
+      if (duplicate = values.tally.find { |_, count| count > 1 })
+        raise Error, "Duplicate enum value #{duplicate.first}"
+      end
+      values
+    end
+
+    def check_input_type input, where
+      name = Schema.named_type(input.type)
+      type = @types[name]
+      raise Error, "Unknown type #{name} for #{where}" unless type
+      raise Error, "#{where} must be an input type, but #{name} is #{type.kind}" unless type.input?
     end
 
     def names list
@@ -172,9 +226,16 @@ module TinyGQL
       end
 
       @types.each_value do |type|
-        type.fields.each_value do |field|
-          unless @types.key?(field.type_name)
-            raise Error, "Unknown type #{field.type_name} for #{type.name}.#{field.name}"
+        if type.kind == :input
+          type.fields.each_value { |field| check_input_type field, "#{type.name}.#{field.name}" }
+        else
+          type.fields.each_value do |field|
+            field_type = @types[field.type_name]
+            raise Error, "Unknown type #{field.type_name} for #{type.name}.#{field.name}" unless field_type
+            if field_type.kind == :input
+              raise Error, "#{type.name}.#{field.name} returns input type #{field.type_name}"
+            end
+            field.arguments.each { |arg| check_input_type arg, "#{type.name}.#{field.name}(#{arg.name})" }
           end
         end
 

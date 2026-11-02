@@ -7,112 +7,36 @@ require "tinygql/validating_parser"
 module TinyGQL
   # Generates a recursive descent parser for queries against a schema.
   #
-  #   File.write "my_parser.rb", TinyGQL::Generator.new(sdl).generate("MyParser")
+  #   schema = TinyGQL.parse_schema(File.read("schema.graphql"))
+  #   File.write "my_parser.rb", TinyGQL::Generator.new(schema).generate("MyParser")
   #
   #   require_relative "my_parser"
   #   MyParser.parse "{ user(id: 1) { name } }"
   class Generator
-    INTROSPECTION = <<~GRAPHQL
-      type __Schema {
-        description: String
-        types: [__Type!]!
-        queryType: __Type!
-        mutationType: __Type
-        subscriptionType: __Type
-        directives: [__Directive!]!
-      }
+    NON_NULL_STRING = Nodes::NotNullType.new(0, Nodes::NamedType.new(0, "String"))
+    TYPENAME = Schema::Field.new("__typename", [], NON_NULL_STRING)
+    SCHEMA_FIELD = Schema::Field.new("__schema", [], Nodes::NotNullType.new(0, Nodes::NamedType.new(0, "__Schema")))
+    TYPE_FIELD = Schema::Field.new("__type", [Schema::InputValue.new("name", NON_NULL_STRING, nil)], Nodes::NamedType.new(0, "__Type"))
 
-      type __Type {
-        kind: __TypeKind!
-        name: String
-        description: String
-        fields(includeDeprecated: Boolean = false): [__Field!]
-        interfaces: [__Type!]
-        possibleTypes: [__Type!]
-        enumValues(includeDeprecated: Boolean = false): [__EnumValue!]
-        inputFields(includeDeprecated: Boolean = false): [__InputValue!]
-        ofType: __Type
-        specifiedByURL: String
-        isOneOf: Boolean
-      }
-
-      enum __TypeKind {
-        SCALAR
-        OBJECT
-        INTERFACE
-        UNION
-        ENUM
-        INPUT_OBJECT
-        LIST
-        NON_NULL
-      }
-
-      type __Field {
-        name: String!
-        description: String
-        args(includeDeprecated: Boolean = false): [__InputValue!]!
-        type: __Type!
-        isDeprecated: Boolean!
-        deprecationReason: String
-      }
-
-      type __InputValue {
-        name: String!
-        description: String
-        type: __Type!
-        defaultValue: String
-        isDeprecated: Boolean!
-        deprecationReason: String
-      }
-
-      type __EnumValue {
-        name: String!
-        description: String
-        isDeprecated: Boolean!
-        deprecationReason: String
-      }
-
-      type __Directive {
-        name: String!
-        description: String
-        locations: [__DirectiveLocation!]!
-        args(includeDeprecated: Boolean = false): [__InputValue!]!
-        isRepeatable: Boolean!
-      }
-
-      enum __DirectiveLocation {
-        QUERY
-        MUTATION
-        SUBSCRIPTION
-        FIELD
-        FRAGMENT_DEFINITION
-        FRAGMENT_SPREAD
-        INLINE_FRAGMENT
-        VARIABLE_DEFINITION
-        SCHEMA
-        SCALAR
-        OBJECT
-        FIELD_DEFINITION
-        ARGUMENT_DEFINITION
-        INTERFACE
-        UNION
-        ENUM
-        ENUM_VALUE
-        INPUT_OBJECT
-        INPUT_FIELD_DEFINITION
-      }
-    GRAPHQL
-
-    TYPENAME = Schema::Field.new("__typename", [], "String")
-    SCHEMA_FIELD = Schema::Field.new("__schema", [], "__Schema")
-    TYPE_FIELD = Schema::Field.new("__type", [Schema::Argument.new("name", true)], "__Type")
+    # The tokens each built in scalar accepts, and the nodes they become
+    BUILTIN_LITERALS = {
+      "Int" => [[[:INT], "IntValue"]],
+      "Float" => [[[:INT], "IntValue"], [[:FLOAT], "FloatValue"]],
+      "String" => [[[:STRING], "StringValue"]],
+      "Boolean" => [[[:TRUE, :FALSE], "BooleanValue"]],
+      "ID" => [[[:STRING], "StringValue"], [[:INT], "IntValue"]],
+    }.freeze
 
     TEMPLATE = File.join(__dir__, "generated_parser.erb")
 
     attr_reader :schema
 
-    def initialize sdl
-      @schema = Schema.parse(sdl + "\n" + INTROSPECTION)
+    # `document` is a schema AST from TinyGQL.parse_schema
+    def initialize document
+      @schema = Schema.new(document)
+      unless @schema["__Schema"]
+        raise Schema::Error, "Schema is missing the introspection types, parse it with TinyGQL.parse_schema"
+      end
     end
 
     # Ruby source for a file defining `class_name` as a parser for this schema
@@ -141,6 +65,8 @@ module TinyGQL
     def body
       @body ||= begin
         @argument_methods = []
+        @value_methods = {}
+        @object_methods = {}
         ERB.new(File.read(TEMPLATE), trim_mode: "-").result(binding)
       end
     end
@@ -197,6 +123,46 @@ module TinyGQL
       name = "arguments_#{@argument_methods.length}"
       @argument_methods << [name, type, field]
       name
+    end
+
+    # Registers a method that parses values of `type`, a type node, and
+    # returns its name.  Each distinct type, like "[ID!]", gets one method.
+    # Wrapped types and input object fields are registered too, so every
+    # method exists before the template renders them.
+    def value_method type
+      key = Schema.type_string(type)
+      return @value_methods[key].first if @value_methods.key?(key)
+
+      name = "value_#{@value_methods.length}"
+      @value_methods[key] = [name, type]
+      if type.named_type?
+        named = schema[type.name]
+        named.fields.each_value { |field| value_method field.type } if named.kind == :input
+      else
+        value_method type.type
+      end
+      name
+    end
+
+    # Registers a method that parses object values of input type `name`
+    def object_method name
+      @object_methods[name] ||= ["object_value_for_#{name}", schema[name]]
+      @object_methods[name].first
+    end
+
+    # Enum types that value methods check
+    def input_enums
+      @value_methods.each_value.filter_map { |_, type|
+        type.named_type? && schema[type.name].kind == :enum ? schema[type.name] : nil
+      }
+    end
+
+    def enum_constant type_name
+      "ENUM_VALUES_#{type_name}"
+    end
+
+    def custom_scalars
+      schema.types.each_value.select { |t| t.kind == :scalar && !Schema::BUILTIN_SCALARS.include?(t.name) }
     end
 
     def lit str

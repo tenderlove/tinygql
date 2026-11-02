@@ -30,7 +30,7 @@ module TinyGQL
       union SearchResult = User | Post
     GRAPHQL
 
-    PARSER = Generator.new(SCHEMA).parser_class
+    PARSER = Generator.new(TinyGQL.parse_schema(SCHEMA)).parser_class
 
     def test_parses_valid_queries
       [
@@ -107,7 +107,7 @@ module TinyGQL
     end
 
     def test_spreads_between_abstract_types
-      parser = Generator.new(<<~GRAPHQL).parser_class
+      parser = Generator.new(TinyGQL.parse_schema(<<~GRAPHQL)).parser_class
         type Query { a: A }
         interface A { id: ID }
         interface B { id: ID }
@@ -170,7 +170,7 @@ module TinyGQL
     end
 
     def test_generated_source_loads_standalone
-      source = Generator.new(SCHEMA).generate("GeneratorTestParser")
+      source = Generator.new(TinyGQL.parse_schema(SCHEMA)).generate("GeneratorTestParser")
       Object.class_eval source
       assert GeneratorTestParser.parse("{ user(id: 1) { name } }")
       assert_raises(ValidatingParser::ValidationError) { GeneratorTestParser.parse("{ nope }") }
@@ -179,7 +179,7 @@ module TinyGQL
     end
 
     def test_schema_extensions_and_schema_definition
-      parser = Generator.new(<<~GRAPHQL).parser_class
+      parser = Generator.new(TinyGQL.parse_schema(<<~GRAPHQL)).parser_class
         schema { query: Root }
         type Root { a: Int }
         extend type Root { b: Thing }
@@ -191,20 +191,25 @@ module TinyGQL
     end
 
     def test_schema_may_declare_builtin_scalars
-      parser = Generator.new("scalar ID\nscalar String\ntype Query { a(id: ID): String }").parser_class
+      parser = Generator.new(TinyGQL.parse_schema("scalar ID\nscalar String\ntype Query { a(id: ID): String }")).parser_class
       assert parser.parse("{ a(id: 1) }")
-      assert_raises(Schema::Error) { Generator.new("type ID { a: Int }\ntype Query { a: Int }") }
+      assert_raises(Schema::Error) { Generator.new(TinyGQL.parse_schema("type ID { a: Int }\ntype Query { a: Int }")) }
     end
 
     def test_schema_errors
-      assert_raises(Schema::Error) { Generator.new("type Query { a: Missing }") }
-      assert_raises(Schema::Error) { Generator.new("type Foo { a: Int }") }
-      assert_raises(Schema::Error) { Generator.new("type Query { a: Int }\nextend type Nope { b: Int }") }
-      assert_raises(Schema::Error) { Generator.new("type Query implements Query { a: Int }") }
+      assert_raises(Schema::Error) { Generator.new(TinyGQL.parse_schema("type Query { a: Missing }")) }
+      assert_raises(Schema::Error) { Generator.new(TinyGQL.parse_schema("type Foo { a: Int }")) }
+      assert_raises(Schema::Error) { Generator.new(TinyGQL.parse_schema("type Query { a: Int }\nextend type Nope { b: Int }")) }
+      assert_raises(Schema::Error) { Generator.new(TinyGQL.parse_schema("type Query implements Query { a: Int }")) }
+    end
+
+    def test_schema_needs_introspection_types
+      error = assert_raises(Schema::Error) { Generator.new(TinyGQL.parse("type Query { a: Int }")) }
+      assert_includes error.message, "TinyGQL.parse_schema"
     end
 
     def test_possible_types
-      schema = Generator.new(SCHEMA).schema
+      schema = Generator.new(TinyGQL.parse_schema(SCHEMA)).schema
       assert_equal ["User", "Post"], schema.possible_types("Node")
       assert_equal ["User", "Post"], schema.possible_types("SearchResult")
       assert_equal ["User"], schema.possible_types("User")

@@ -17,10 +17,12 @@ when "gen"
     exit 1
   end
 
+  require "tinygql"
   require "tinygql/generator"
 
   schema_file, class_name = args
-  print TinyGQL::Generator.new(File.read(schema_file)).generate(class_name)
+  schema = TinyGQL.parse_schema(File.read(schema_file))
+  print TinyGQL::Generator.new(schema).generate(class_name)
 when "help", "-h", "--help"
   puts USAGE
 else

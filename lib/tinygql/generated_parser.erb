@@ -147,36 +147,169 @@ def <%= field_method type.name %>
 end
 <%- end -%>
 <%- @argument_methods.each do |method, type, field| -%>
-<%- required = field.arguments.select(&:required) -%>
-<%- optional = field.arguments.reject(&:required) -%>
 
 # Arguments for <%= type.name %>.<%= field.name %>
 def <%= method %> field_loc
   expect_token :LPAREN
-<%- required.each_index do |i| -%>
-  required_<%= i %> = false
+<%- field.arguments.each_index do |i| -%>
+  seen_<%= i %> = false
 <%- end -%>
   args = []
   while !at?(:RPAREN)
     loc = pos
     name = self.name
+    expect_token :COLON
     case name
-<%- required.each_with_index do |arg, i| -%>
-    when <%= lit arg.name %> then required_<%= i %> = true
-<%- end -%>
-<%- if optional.any? -%>
-    when <%= optional.map { |arg| lit arg.name }.join(", ") %>
+<%- field.arguments.each_with_index do |arg, i| -%>
+    when <%= lit arg.name %>
+      duplicate_argument! name, <%= lit field.name %>, <%= lit type.name %>, loc if seen_<%= i %>
+      seen_<%= i %> = true
+      value = <%= value_method arg.type %>
 <%- end -%>
     else
       unknown_argument! name, <%= lit field.name %>, <%= lit type.name %>, loc
     end
-    expect_token :COLON
     args << TinyGQL::Nodes::Argument.new(loc, name, value)
   end
   expect_token :RPAREN
-<%- required.each_with_index do |arg, i| -%>
-  missing_argument! <%= lit arg.name %>, <%= lit field.name %>, <%= lit type.name %>, field_loc unless required_<%= i %>
+<%- field.arguments.each_with_index do |arg, i| -%>
+<%- next unless arg.required -%>
+  missing_argument! <%= lit arg.name %>, <%= lit field.name %>, <%= lit type.name %>, field_loc unless seen_<%= i %>
 <%- end -%>
   args.freeze
+rescue TinyGQL::Scalars::InvalidValue => e
+  invalid_argument! name, <%= lit field.name %>, <%= lit type.name %>, e.message, loc
+end
+<%- end -%>
+<%- @value_methods.each_value do |method, type| -%>
+
+# Parses a value of type <%= Schema.type_string(type) %>
+def <%= method %>
+<%- if type.not_null_type? -%>
+  null_value! <%= lit Schema.type_string(type) %> if at?(:NULL)
+  <%= value_method type.type %>
+<%- else -%>
+  case token_name
+  when :VAR_SIGN then variable
+  when :NULL then null_value
+<%- if type.list_type? -%>
+  when :LBRACKET
+    loc = pos
+    accept_token
+    items = []
+    while !at?(:RBRACKET)
+      items << <%= value_method type.type %>
+    end
+    accept_token
+    TinyGQL::Nodes::ListValue.new(loc, items.freeze, nil)
+  else
+    # A single value where a list is expected is a list of one
+    <%= value_method type.type %>
+  end
+<%- else -%>
+<%- named = schema[type.name] -%>
+<%- case named.kind -%>
+<%- when :scalar -%>
+<%- if (literals = BUILTIN_LITERALS[named.name]) -%>
+<%- literals.each do |token, node_class| -%>
+  when <%= token.map { ":#{_1}" }.join(", ") %>
+    loc = pos
+    text = <%= token == [:STRING] ? "expect_string_value" : "expect_token_value(token_name)" %>
+    TinyGQL::Nodes::<%= node_class %>.new(loc, text, @scalars.coerce_literal_<%= named.name %>(text).freeze)
+<%- end -%>
+  else
+    invalid_literal! <%= lit named.name %>, self.value
+  end
+<%- else -%>
+  else
+    loc = pos
+    kind = custom_literal_kind
+    text = custom_literal_text kind, <%= lit named.name %>
+    custom_literal loc, kind, text, @scalars.coerce_literal_<%= named.name %>(kind, text)
+  end
+<%- end -%>
+<%- when :enum -%>
+  when :IDENTIFIER, *ENUM_VALUE_KEYWORD_TOKENS
+    loc = pos
+    text = expect_token_value(token_name)
+    unknown_enum_value! <%= lit named.name %>, text unless <%= enum_constant named.name %>.key?(text)
+    TinyGQL::Nodes::EnumValue.new(loc, text, text)
+  else
+    invalid_enum! <%= lit named.name %>, self.value
+  end
+<%- else -%>
+  when :LCURLY
+    <%= object_method named.name %>
+  else
+    unexpected_value! <%= lit named.name %>, self.value
+  end
+<%- end -%>
+<%- end -%>
+<%- end -%>
+end
+<%- end -%>
+<%- @object_methods.each_value do |method, named| -%>
+<%- fields = named.fields.values -%>
+
+# Parses an object value of input type <%= named.name %>
+def <%= method %>
+  loc = pos
+  expect_token :LCURLY
+<%- fields.each_index do |i| -%>
+  seen_<%= i %> = false
+<%- end -%>
+  fields = []
+  while !at?(:RCURLY)
+    field_loc = pos
+    name = self.name
+    expect_token :COLON
+    case name
+<%- fields.each_with_index do |field, i| -%>
+    when <%= lit field.name %>
+      duplicate_input_field! name if seen_<%= i %>
+      seen_<%= i %> = true
+      value = <%= value_method field.type %>
+<%- end -%>
+    else
+      unknown_input_field! name, <%= lit named.name %>
+    end
+    fields << TinyGQL::Nodes::ObjectField.new(field_loc, name, value)
+  end
+  accept_token
+<%- fields.each_with_index do |field, i| -%>
+<%- next unless field.required -%>
+  missing_input_field! <%= lit field.name %>, <%= lit named.name %>, <%= lit Schema.type_string(field.type) %> unless seen_<%= i %>
+<%- end -%>
+  TinyGQL::Nodes::ObjectValue.new(loc, fields.freeze, nil)
+end
+<%- end -%>
+<%- input_enums.each do |enum| -%>
+
+<%= enum_constant enum.name %> = {
+<%- enum.values.each do |value| -%>
+  <%= lit value %> => true,
+<%- end -%>
+}.freeze
+<%- end -%>
+<%- if custom_scalars.any? -%>
+
+# Coerces the schema's scalars.  Built in scalars follow the GraphQL spec,
+# and custom scalars raise NotImplementedError until you implement them.
+# Subclass this and pass an instance to `parse` with `scalars:`
+class Scalars < TinyGQL::Scalars
+<%- custom_scalars.each_with_index do |scalar, i| -%>
+<%- if i > 0 -%>
+
+<%- end -%>
+  def coerce_literal_<%= scalar.name %> kind, text
+    raise NotImplementedError, "#{self.class}#coerce_literal_<%= scalar.name %> is not implemented"
+  end
+<%- end -%>
+end
+<%- else -%>
+
+# Coerces the schema's scalars.  Subclass this and pass an instance to
+# `parse` with `scalars:` to change how they're coerced
+class Scalars < TinyGQL::Scalars
 end
 <%- end -%>

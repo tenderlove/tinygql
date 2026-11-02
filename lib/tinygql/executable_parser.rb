@@ -296,7 +296,7 @@ module TinyGQL
         list << Nodes::ObjectField.new(loc, n, value)
       end
       expect_token(:RCURLY)
-      Nodes::ObjectValue.new(start, list.freeze)
+      Nodes::ObjectValue.new(start, list.freeze, nil)
     end
 
     def list_value
@@ -307,38 +307,38 @@ module TinyGQL
         list << value
       end
       expect_token(:RBRACKET)
-      Nodes::ListValue.new(loc, list.freeze)
+      Nodes::ListValue.new(loc, list.freeze, nil)
     end
 
     def enum_value
       case token_name
       when :IDENTIFIER, *ENUM_VALUE_KEYWORD_TOKENS
-        Nodes::EnumValue.new(pos, expect_token_value(token_name))
+        Nodes::EnumValue.new(pos, expect_token_value(token_name), nil)
       else
         expect_token(:IDENTIFIER)
       end
     end
 
     def float_value
-      Nodes::FloatValue.new(pos, expect_token_value(:FLOAT))
+      Nodes::FloatValue.new(pos, expect_token_value(:FLOAT), nil)
     end
 
     def int_value
-      Nodes::IntValue.new(pos, expect_token_value(:INT))
+      Nodes::IntValue.new(pos, expect_token_value(:INT), nil)
     end
 
     def string_value
-      Nodes::StringValue.new(pos, expect_string_value)
+      Nodes::StringValue.new(pos, expect_string_value, nil)
     end
 
     def boolean_value
       loc = pos
       if at?(:TRUE)
         accept_token
-        Nodes::BooleanValue.new(loc, "true")
+        Nodes::BooleanValue.new(loc, "true", nil)
       elsif at?(:FALSE)
         accept_token
-        Nodes::BooleanValue.new(loc, "false")
+        Nodes::BooleanValue.new(loc, "false", nil)
       else
         expect_token(:TRUE)
       end
@@ -347,7 +347,7 @@ module TinyGQL
     def null_value
       loc = pos
       expect_token :NULL
-      Nodes::NullValue.new(loc, "null")
+      Nodes::NullValue.new(loc, "null", nil)
     end
 
     def type
