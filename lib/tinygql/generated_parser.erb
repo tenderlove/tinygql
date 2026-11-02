@@ -22,10 +22,11 @@ ABSTRACT_POSSIBLE_TYPES = {
 }.freeze
 <%- end -%>
 
-# Types that variables can be declared with
+# Types that variables can be declared with, mapped to branches in
+# named_value
 INPUT_TYPES = {
-<%- input_types.each do |type| -%>
-  <%= lit type.name %> => true,
+<%- input_types.each_with_index do |type, i| -%>
+  <%= lit type.name %> => <%= i %>,
 <%- end -%>
 }.freeze
 
@@ -70,6 +71,16 @@ end
 
 def input_type? type
   INPUT_TYPES.key?(type)
+end
+
+# Parses a constant value of the input type named `type`, for variable
+# defaults
+def named_value type
+  case INPUT_TYPES[type]
+<%- input_types.each_with_index do |type, i| -%>
+  when <%= i %> then <%= value_method TinyGQL::Nodes::NamedType.new(0, type.name) %>(true)
+<%- end -%>
+  end
 end
 
 def operation_selection_set type
@@ -175,7 +186,7 @@ def <%= method %> field_loc
     when <%= lit arg.name %>
       duplicate_argument! name, <%= lit field.name %>, <%= lit type.name %>, loc if seen_<%= i %>
       seen_<%= i %> = true
-      value = <%= input_value arg %>
+      value = <%= input_value arg, "false" %>
 <%- end -%>
     else
       unknown_argument! name, <%= lit field.name %>, <%= lit type.name %>, loc
@@ -197,16 +208,17 @@ end
 <%= type_constant type %> = <%= type_node type %>
 
 # Parses a value of type <%= Schema.type_string(type) %>
-def <%= method %>
+# Variables aren't allowed when `const` is true
+def <%= method %> const
 <%- if type.not_null_type? -%>
   case token_name
-  when :VAR_SIGN then variable_usage <%= type_constant type %>
+  when :VAR_SIGN then variable_usage <%= type_constant type %>, const
   when :NULL then null_value! <%= lit Schema.type_string(type) %>
-  else <%= value_method type.type %>
+  else <%= value_method type.type %> const
   end
 <%- else -%>
   case token_name
-  when :VAR_SIGN then variable_usage <%= type_constant type %>
+  when :VAR_SIGN then variable_usage <%= type_constant type %>, const
   when :NULL then null_value
 <%- if type.list_type? -%>
   when :LBRACKET
@@ -214,13 +226,13 @@ def <%= method %>
     accept_token
     items = []
     while !at?(:RBRACKET)
-      items << <%= value_method type.type %>
+      items << <%= value_method type.type %>(const)
     end
     accept_token
     TinyGQL::Nodes::ListValue.new(loc, items.freeze, nil)
   else
     # A single value where a list is expected is a list of one
-    <%= value_method type.type %>
+    <%= value_method type.type %> const
   end
 <%- else -%>
 <%- named = schema[type.name] -%>
@@ -255,7 +267,7 @@ def <%= method %>
   end
 <%- else -%>
   when :LCURLY
-    <%= object_method named.name %>
+    <%= object_method named.name %> const
   else
     unexpected_value! <%= lit named.name %>, self.value
   end
@@ -268,7 +280,7 @@ end
 <%- fields = named.fields.values -%>
 
 # Parses an object value of input type <%= named.name %>
-def <%= method %>
+def <%= method %> const
   loc = pos
   expect_token :LCURLY
 <%- fields.each_index do |i| -%>
@@ -284,7 +296,7 @@ def <%= method %>
     when <%= lit field.name %>
       duplicate_input_field! name if seen_<%= i %>
       seen_<%= i %> = true
-      value = <%= input_value field %>
+      value = <%= input_value field, "const" %>
 <%- end -%>
     else
       unknown_input_field! name, <%= lit named.name %>

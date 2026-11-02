@@ -185,6 +185,37 @@ module TinyGQL
       assert_error "Variable $x is never used by operation B", "query A($x: Int) { ...F } query B($x: Int) { posts(ids: 1) { id } } fragment F on Query { posts(ids: 1, first: $x) { id } }"
     end
 
+    def test_variable_defaults_are_coerced
+      doc = PARSER.parse('query($ids: [ID!]! = [1, "2"], $s: Status = DRAFT, $r: Range = { from: 1 }, $first: Int = null, $m: [[Int]] = 3) { posts(ids: $ids, first: $first, filter: { status: $s }) { id } between(range: $r, matrix: $m) { id } }')
+      ids, s, r, first, m = doc.find_all(&:variable_definition?).map(&:default_value)
+      assert_equal ["1", "2"], ids.value.map(&:coerced)
+      assert_equal "DRAFT", s.coerced
+      assert_equal 1, r.values.first.value.coerced
+      assert_predicate first, :null_value?
+      # Single values aren't wrapped, like in arguments
+      assert_equal 3, m.coerced
+    end
+
+    def test_variable_defaults_must_fit_their_type
+      assert_error "Invalid default value for $x: Int cannot represent non-integer value: \"a\"", 'query($x: Int = "a") { posts(ids: 1, first: $x) { id } }'
+      assert_error "Invalid default value for $x: Expected value of type Int!, found null", "query($x: Int! = null) { posts(ids: 1, first: $x) { id } }"
+      assert_error "Invalid default value for $x: Expected value of type ID!, found null", "query($x: [ID!] = [1, null]) { posts(ids: 1) { id } ...on Query { posts(ids: $x) { id } } }"
+      assert_error "Invalid default value for $x: Value NOPE does not exist in Status enum", "query($x: Status = NOPE) { posts(ids: 1, filter: { status: $x }) { id } }"
+      assert_error "Invalid default value for $x: Field Range.from of required type Int! was not provided", "query($x: Range = {}) { between(range: $x) { id } }"
+      error = assert_raises(ValidatingParser::ValidationError) do
+        PARSER.parse "query($x: DateTime = 1) { posts(ids: 1, filter: { after: $x }) { id } }", scalars: TestScalars.new
+      end
+      assert_includes error.message, "Invalid default value for $x: DateTime must be a string"
+      assert_error "Invalid default value for $x: Variables can't be used in default values", "query($y: Range, $x: [Range] = [{ from: $y }]) { between(range: $y) { id } }"
+    end
+
+    def test_operation_names
+      assert PARSER.parse("query A { posts(ids: 1) { id } } query B { posts(ids: 1) { id } }")
+      assert_error "Duplicate operation A line: 2", "query A { posts(ids: 1) { id } }\nquery A { posts(ids: 1) { id } }"
+      assert_error "An anonymous operation must be the only operation in the document", "{ posts(ids: 1) { id } } query A { posts(ids: 1) { id } }"
+      assert_error "An anonymous operation must be the only operation in the document", "query A { posts(ids: 1) { id } } query { posts(ids: 1) { id } }"
+    end
+
     def test_variables_are_numbered
       doc = PARSER.parse("query A($x: Int, $y: Int) { posts(ids: 1, first: $x) { id } ...F } query B($y: Int, $z: Int) { posts(ids: 1, first: $z) { id } ...F } fragment F on Query { between(range: { from: 1, to: $y }) { id } }")
       vars = doc.find_all(&:variable?)

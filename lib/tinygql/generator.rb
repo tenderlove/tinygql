@@ -144,15 +144,16 @@ module TinyGQL
       name
     end
 
-    # Code that parses the value of argument or input field `input`.  A
-    # nullable variable may be used for a non-null one with a default, so
-    # those check variables against the nullable type
-    def input_value input
+    # Code that parses the value of argument or input field `input`.
+    # `const` is Ruby code for whether variables are disallowed.  A nullable
+    # variable may be used for a non-null input with a default, so those
+    # check variables against the nullable type
+    def input_value input, const
       method = value_method input.type
       if input.type.not_null_type? && input.default_value
-        "at?(:VAR_SIGN) ? variable_usage(#{type_constant input.type.type}) : #{method}"
+        "at?(:VAR_SIGN) ? variable_usage(#{type_constant input.type.type}, #{const}) : #{method}(#{const})"
       else
-        method
+        "#{method} #{const}"
       end
     end
 
