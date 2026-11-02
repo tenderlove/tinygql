@@ -210,6 +210,7 @@ module TinyGQL
         :STRING
 
       else
+        @len = 1
         @scan.pos += 1
         :UNKNOWN_CHAR
       end

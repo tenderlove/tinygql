@@ -86,6 +86,12 @@ module TinyGQL
       assert_equal [:INT, "1"], lexer.next_token
     end
 
+    def test_unknown_char_after_token
+      lexer = Lexer.new "abc %xyz"
+      assert_equal [:IDENTIFIER, "abc"], lexer.next_token
+      assert_equal [:UNKNOWN_CHAR, "%"], lexer.next_token
+    end
+
     def test_numbers_dont_allocate
       skip "needs MRI's GC.stat" unless RUBY_ENGINE == "ruby"
 

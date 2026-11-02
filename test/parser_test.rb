@@ -469,6 +469,18 @@ directive @skip(if: Boolean!) on FIELD | FRAGMENT_SPREAD | INLINE_FRAGMENT
       assert_equal doc.index("null"), c.start
     end
 
+    def test_negative_numbers
+      values = Parser.parse("{ a(b: -1, c: -1.5e3, d: -0, e: [1, -2]) }").find_all(&:argument?).map(&:value)
+      assert_equal [Nodes::IntValue, Nodes::FloatValue, Nodes::IntValue, Nodes::ListValue], values.map(&:class)
+      assert_equal ["-1", "-1.5e3", "-0"], values.first(3).map(&:value)
+      assert_equal "-2", values.last.value.last.value
+
+      ["{ a(b: - 1) }", "{ a(b: -x) }"].each do |doc|
+        error = assert_raises(Parser::UnexpectedToken) { Parser.parse doc }
+        assert_includes error.message, "UNKNOWN_CHAR -"
+      end
+    end
+
     def test_executable_parser
       doc = File.read(File.join(__dir__, "kitchen-sink.graphql"))
       assert_equal Parser.parse(doc).map { |n| [n.class, n.start] },
