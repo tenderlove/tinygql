@@ -22,6 +22,7 @@ module TinyGQL
 
     def initialize doc
       @lexer = Lexer.new doc
+      @variable_ids = {}
       accept_token
     end
 
@@ -380,7 +381,18 @@ module TinyGQL
     def variable
       loc = pos
       expect_token(:VAR_SIGN)
-      Nodes::Variable.new loc, name
+      name = self.name
+      Nodes::Variable.new loc, name, variable_id(name)
+    end
+
+    # The number for variable `name`, the same everywhere in the document
+    def variable_id name
+      id = @variable_ids[name]
+      unless id
+        id = @variable_ids.size
+        @variable_ids[name] = id
+      end
+      id
     end
 
     def name

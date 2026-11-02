@@ -15,9 +15,12 @@ nodes:
     - directives?: list
     - selection_set: list
 
+  # `index` numbers variables by name within a document, so their values
+  # can be stored in an array
   - name: Variable
     fields:
       - name: literal
+      - index: literal
 
   - name: NamedType
     fields:

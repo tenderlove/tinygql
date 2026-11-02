@@ -28,7 +28,8 @@ module TinyGQL
                         │           │   │   ├── value: "1"
                         │           │   │   └── coerced: ∅
                         │           │   └── @ Variable (start: 11)
-                        │           │       └── name: "c"
+                        │           │       ├── name: "c"
+                        │           │       └── index: 0
                         │           └── coerced: ∅
                         ├── directives: (length: 1)
                         │   └── @ Directive (start: 16)

@@ -135,13 +135,76 @@ module TinyGQL
       assert_nil arg.value.coerced
     end
 
-    def test_variables_are_accepted_anywhere
+    def test_allowed_variables
       [
         "query($ids: [ID!]!) { posts(ids: $ids) { id } }",
         "query($id: ID!) { posts(ids: [$id, 2]) { id } }",
         "query($s: Status, $r: Range!) { posts(ids: 1, filter: { status: $s }) { id } between(range: $r) { id } }",
         "query($from: Int!) { between(range: { from: $from }) { id } }",
+        # Non-null variables fit nullable positions
+        "query($first: Int!, $m: [[Int!]!]!) { posts(ids: 1, first: $first) { id } between(range: { from: 1 }, matrix: $m) { id } }",
+        # Nullable variables fit non-null positions with a default
+        "query($first: Int) { posts(ids: 1, first: $first) { id } }",
+        "query($r: Range = { from: 1 }) { between(range: $r) { id } }",
+        "query($ids: [ID!]! = [1]) { posts(ids: $ids) { id } }",
+        # Directives aren't typed yet, but their variables must be defined
+        "query($b: Boolean!) { posts(ids: 1) @include(if: $b) { id } }",
+        # Variables in fragments belong to the operations that spread them
+        "query A($x: Int) { ...F } query B($x: Int!) { ...F } fragment F on Query { posts(ids: 1, first: $x) { id } }",
+        "query($x: Int) { ...F } fragment F on Query { ...G } fragment G on Query { posts(ids: 1, first: $x) { id } }",
+        "query($x: Int) { ...F ...G } fragment F on Query { ...G } fragment G on Query { posts(ids: 1, first: $x) { id } }",
       ].each { |query| assert PARSER.parse(query), query }
+    end
+
+    def test_variables_must_fit_their_positions
+      assert_error "Variable $x of type String used in position expecting Int", "query($x: String) { posts(ids: 1, first: $x) { id } }"
+      assert_error "Variable $x of type ID used in position expecting ID! line: 2", "query($x: ID) {\n posts(ids: [$x]) { id } }"
+      assert_error "Variable $x of type [ID] used in position expecting [ID!]!", "query($x: [ID] = [1]) { posts(ids: $x) { id } }"
+      # Single values fit list positions, but variables don't
+      assert_error "Variable $x of type ID! used in position expecting [ID!]!", "query($x: ID!) { posts(ids: $x) { id } }"
+      assert_error "Variable $x of type [Int] used in position expecting Int", "query($x: [Int]) { posts(ids: 1, first: $x) { id } }"
+      assert_error "Variable $x of type [Int] used in position expecting [[Int]]", "query($x: [Int]) { between(range: { from: 1 }, matrix: $x) { id } }"
+      assert_error "Variable $x of type Int used in position expecting Int!", "query($x: Int) { between(range: { from: $x }) { id } }"
+      assert_error "Variable $x of type Int used in position expecting Int!", "query($x: Int = null) { between(range: { from: $x }) { id } }"
+      assert_error "Variable $x of type Range used in position expecting Range!", "query($x: Range) { between(range: $x) { id } }"
+      assert_error "Variable $x of type Status used in position expecting DateTime", "query($x: Status) { posts(ids: 1, filter: { after: $x }) { id } }"
+      assert_error "Variable $x of type Int used in position expecting Int!", "query A($x: Int) { ...F } fragment F on Query { between(range: { from: $x }) { id } }"
+      assert_error "Variable $x of type Int used in position expecting Int!", "query A($x: Int!) { ...F } query B($x: Int) { ...F } fragment F on Query { between(range: { from: $x }) { id } }"
+    end
+
+    def test_variables_must_be_defined
+      assert_error "Variable $x is not defined line: 1", "{ posts(ids: $x) { id } }"
+      assert_error "Variable $y is not defined", "query($x: ID!) { posts(ids: $y) { id } }"
+      assert_error "Variable $x is not defined", "{ posts(ids: 1) @include(if: $x) { id } }"
+      assert_error "Variable $x is not defined by operation B", "query A($x: Int) { ...F } query B { ...F } fragment F on Query { posts(ids: 1, first: $x) { id } }"
+      assert_error "Variable $x is not defined by operation A line: 2", "query A { ...F }\nfragment F on Query { ...G } fragment G on Query { posts(ids: 1, first: $x) { id } }"
+    end
+
+    def test_variables_must_be_used
+      assert_error "Variable $x is never used", "query($x: Int) { posts(ids: 1) { id } }"
+      assert_error "Variable $x is never used by operation B", "query A($x: Int) { ...F } query B($x: Int) { posts(ids: 1) { id } } fragment F on Query { posts(ids: 1, first: $x) { id } }"
+    end
+
+    def test_variables_are_numbered
+      doc = PARSER.parse("query A($x: Int, $y: Int) { posts(ids: 1, first: $x) { id } ...F } query B($y: Int, $z: Int) { posts(ids: 1, first: $z) { id } ...F } fragment F on Query { between(range: { from: 1, to: $y }) { id } }")
+      vars = doc.find_all(&:variable?)
+      assert_equal %w{ x y x y z z y }, vars.map(&:name)
+      assert_equal [0, 1, 0, 1, 2, 2, 1], vars.map(&:index)
+      assert_predicate doc, :frozen?
+    end
+
+    def test_fragment_cycles
+      assert_error "Fragment F spreads itself", "{ ...F } fragment F on Query { ...F }"
+      assert_error "Fragment F spreads itself line: 3", "{ ...F }\nfragment F on Query { ...G }\nfragment G on Query { ...F }"
+      # Even when no operation uses them
+      assert_error "Fragment F spreads itself", "{ posts(ids: 1) { id } } fragment F on Query { ...G } fragment G on Query { ...F }"
+    end
+
+    def test_variable_definitions
+      assert_error "Duplicate variable $x", "query($x: Int, $x: Int) { posts(ids: 1, first: $x) { id } }"
+      assert_error "Variable $x cannot be of non-input type Post", "query($x: Post) { posts(ids: 1) { id } }"
+      assert_error "Variable $x cannot be of non-input type [Nope!]", "query($x: [Nope!]) { posts(ids: 1) { id } }"
+      assert_error "Invalid default value for $x: Variables can't be used in default values", "query($y: Int, $x: [Int] = [$y]) { posts(ids: 1, first: $y) { id } }"
     end
 
     def test_invalid_scalars

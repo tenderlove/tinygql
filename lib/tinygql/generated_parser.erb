@@ -22,6 +22,13 @@ ABSTRACT_POSSIBLE_TYPES = {
 }.freeze
 <%- end -%>
 
+# Types that variables can be declared with
+INPUT_TYPES = {
+<%- input_types.each do |type| -%>
+  <%= lit type.name %> => true,
+<%- end -%>
+}.freeze
+
 # Maps composite type names to branches in composite_selection_set
 COMPOSITE_TYPES = {
 <%- composite_types.each_with_index do |type, i| -%>
@@ -59,6 +66,10 @@ end
 
 def abstract_possible_types type
   ABSTRACT_POSSIBLE_TYPES[type]
+end
+
+def input_type? type
+  INPUT_TYPES.key?(type)
 end
 
 def operation_selection_set type
@@ -164,7 +175,7 @@ def <%= method %> field_loc
     when <%= lit arg.name %>
       duplicate_argument! name, <%= lit field.name %>, <%= lit type.name %>, loc if seen_<%= i %>
       seen_<%= i %> = true
-      value = <%= value_method arg.type %>
+      value = <%= input_value arg %>
 <%- end -%>
     else
       unknown_argument! name, <%= lit field.name %>, <%= lit type.name %>, loc
@@ -183,14 +194,19 @@ end
 <%- end -%>
 <%- @value_methods.each_value do |method, type| -%>
 
+<%= type_constant type %> = <%= type_node type %>
+
 # Parses a value of type <%= Schema.type_string(type) %>
 def <%= method %>
 <%- if type.not_null_type? -%>
-  null_value! <%= lit Schema.type_string(type) %> if at?(:NULL)
-  <%= value_method type.type %>
+  case token_name
+  when :VAR_SIGN then variable_usage <%= type_constant type %>
+  when :NULL then null_value! <%= lit Schema.type_string(type) %>
+  else <%= value_method type.type %>
+  end
 <%- else -%>
   case token_name
-  when :VAR_SIGN then variable
+  when :VAR_SIGN then variable_usage <%= type_constant type %>
   when :NULL then null_value
 <%- if type.list_type? -%>
   when :LBRACKET
@@ -268,7 +284,7 @@ def <%= method %>
     when <%= lit field.name %>
       duplicate_input_field! name if seen_<%= i %>
       seen_<%= i %> = true
-      value = <%= value_method field.type %>
+      value = <%= input_value field %>
 <%- end -%>
     else
       unknown_input_field! name, <%= lit named.name %>

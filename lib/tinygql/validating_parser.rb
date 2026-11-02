@@ -13,6 +13,21 @@ module TinyGQL
   class ValidatingParser < ExecutableParser
     class ValidationError < StandardError; end
 
+    # The variables an operation or fragment defines and uses.  Variables
+    # are numbered by name across the document, so `defined` and `used` are
+    # bitmaps of those numbers.  The arrays are indexed by number:
+    #
+    #   definitions: each VariableDefinition, for operations
+    #   first_use: the first Variable node for each variable, for errors
+    #   types: a Hash from each type node a variable is used as, to the
+    #     first Variable node used as that type
+    #
+    # Checking an operation merges in the fragments it spreads, directly or
+    # through other fragments.  `state` is :closing while that happens, and
+    # :closed once a fragment's scope includes everything it spreads, so
+    # each fragment is only merged once
+    Scope = Struct.new(:node, :definitions, :defined, :used, :first_use, :types, :spreads, :state)
+
     def self.parse doc, scalars: self::Scalars.new
       new(doc, scalars: scalars).parse
     end
@@ -23,15 +38,103 @@ module TinyGQL
       @scalars = scalars
       @fragments = {}
       @spreads = []
+      @operations = []
+      @fragment_scopes = {}
+      # The scope of the operation or fragment being parsed
+      @scope = nil
     end
 
     def parse
       doc = super
       check_fragment_spreads
+      check_variables
       doc
     end
 
     private
+
+    def operation_definition
+      scope = @scope = new_scope
+      operation = super
+      scope.node = operation
+      @operations << scope
+      operation
+    end
+
+    def fragment_definition
+      scope = @scope = new_scope
+      fragment = super
+      scope.node = fragment
+      @fragment_scopes[fragment.fragment_name] = scope
+      fragment
+    end
+
+    def new_scope
+      Scope.new(nil, [], 0, 0, [], [], [], nil)
+    end
+
+
+    def variable_definition
+      loc = pos
+      var_loc = pos
+      expect_token :VAR_SIGN
+      name = self.name
+      id = variable_id(name)
+      var = Nodes::Variable.new(var_loc, name, id)
+      if @scope.definitions[id]
+        validation_error! "Duplicate variable $#{name}", var_loc
+      end
+      expect_token :COLON
+      type_loc = pos
+      type = self.type
+      named = type
+      named = named.type until named.named_type?
+      unless input_type?(named.name)
+        validation_error! "Variable $#{var.name} cannot be of non-input type #{type_string(type)}", type_loc
+      end
+      default_value = if at?(:EQUALS)
+        accept_token
+        default_loc = pos
+        begin
+          const_value nil
+        rescue Scalars::InvalidValue => e
+          validation_error! "Invalid default value for $#{var.name}: #{e.message}", default_loc
+        end
+      end
+      directives = if at?(:DIR_SIGN); self.directives; end
+
+      definition = Nodes::VariableDefinition.new(loc, var, type, default_value, directives)
+      @scope.definitions[id] = definition
+      @scope.defined |= 1 << id
+      definition
+    end
+
+    # A variable where the schema doesn't say what type is expected, like
+    # in a directive argument
+    def variable
+      variable_usage nil
+    end
+
+    # A variable used where a value of `type`, a type node, is expected.
+    # Usages are checked against the operations' variable definitions once
+    # the whole document is parsed.  Type nodes come from constants in the
+    # generated parser, so a variable used as the same type many times is
+    # only recorded and checked once
+    def variable_usage type
+      loc = pos
+      expect_token :VAR_SIGN
+      name = self.name
+      id = variable_id(name)
+      var = Nodes::Variable.new(loc, name, id)
+      scope = @scope
+      scope.used |= 1 << id
+      scope.first_use[id] ||= var
+      if type
+        types = scope.types[id] ||= {}.compare_by_identity
+        types[type] ||= var
+      end
+      var
+    end
 
     def fragment_selection_set name, type_condition
       if @fragments.key?(name)
@@ -67,6 +170,7 @@ module TinyGQL
         # Fragments may be defined after they're used, so check these once
         # the whole document is parsed
         @spreads << spread << parent
+        @scope.spreads << spread
         spread
       end
     end
@@ -82,6 +186,161 @@ module TinyGQL
         end
         check_spread type, parent, spread.start
         i += 2
+      end
+    end
+
+    # Checks each operation's variables, including the ones used by the
+    # fragments it spreads.  Fragments are closed first, so cycles are found
+    # even in fragments no operation uses
+    def check_variables
+      fragments = @fragment_scopes.values
+      i = 0
+      while i < fragments.length
+        close_scope fragments[i] unless fragments[i].state
+        i += 1
+      end
+
+      i = 0
+      while i < @operations.length
+        scope = @operations[i]
+        close_scope scope
+        check_scope scope
+        i += 1
+      end
+    end
+
+    # Merges the scopes of the fragments `scope` spreads into it, closing
+    # them first
+    def close_scope scope
+      scope.state = :closing
+      spreads = scope.spreads
+      i = 0
+      while i < spreads.length
+        spread = spreads[i]
+        fragment = @fragment_scopes[spread.fragment_name]
+        case fragment.state
+        when :closing
+          validation_error! "Fragment #{spread.fragment_name} spreads itself", spread.start
+        when nil
+          close_scope fragment
+        end
+        merge_scope scope, fragment
+        i += 1
+      end
+      scope.state = :closed
+    end
+
+    def merge_scope scope, other
+      scope.used |= other.used
+
+      first_use = other.first_use
+      i = 0
+      while i < first_use.length
+        scope.first_use[i] ||= first_use[i]
+        i += 1
+      end
+
+      types = other.types
+      i = 0
+      while i < types.length
+        if (others = types[i])
+          mine = scope.types[i] ||= {}.compare_by_identity
+          keys = others.keys
+          j = 0
+          while j < keys.length
+            mine[keys[j]] ||= others[keys[j]]
+            j += 1
+          end
+        end
+        i += 1
+      end
+    end
+
+    # Checks a closed operation scope
+    def check_scope scope
+      operation = scope.node
+
+      undefined = scope.used & ~scope.defined
+      if undefined != 0
+        var = scope.first_use[lowest_bit(undefined)]
+        validation_error! "Variable $#{var.name} is not defined#{operation_label(operation)}", var.start
+      end
+
+      unused = scope.defined & ~scope.used
+      if unused != 0
+        var = scope.definitions[lowest_bit(unused)].variable
+        validation_error! "Variable $#{var.name} is never used#{operation_label(operation)}", var.start
+      end
+
+      types = scope.types
+      id = 0
+      while id < types.length
+        if (locations = types[id])
+          definition = scope.definitions[id]
+          keys = locations.keys
+          j = 0
+          while j < keys.length
+            location = keys[j]
+            unless variable_allowed?(definition, location)
+              var = locations[location]
+              validation_error! "Variable $#{var.name} of type #{type_string(definition.type)} used in position expecting #{type_string(location)}", var.start
+            end
+            j += 1
+          end
+        end
+        id += 1
+      end
+    end
+
+    def lowest_bit bits
+      (bits & -bits).bit_length - 1
+    end
+
+    def operation_label operation
+      operation.name ? " by operation #{operation.name}" : ""
+    end
+
+    # Whether a variable may be used where `location` is expected.  A
+    # nullable variable with a default may be used for a non-null type,
+    # because the default is used when the variable is missing
+    def variable_allowed? definition, location
+      type = definition.type
+      if location.not_null_type? && !type.not_null_type?
+        default = definition.default_value
+        return false if default.nil? || default.null_value?
+        location = location.type
+      end
+      types_compatible?(type, location)
+    end
+
+    # Whether a variable of `type` fits `location`, both type nodes
+    def types_compatible? type, location
+      while true
+        if location.not_null_type?
+          return false unless type.not_null_type?
+          type = type.type
+          location = location.type
+        elsif type.not_null_type?
+          type = type.type
+        elsif location.list_type?
+          return false unless type.list_type?
+          type = type.type
+          location = location.type
+        elsif type.list_type?
+          return false
+        else
+          return type.name == location.name
+        end
+      end
+    end
+
+    def type_string type
+      if type.list_type?
+        "[#{type_string(type.type)}]"
+      elsif type.not_null_type?
+        "#{type_string(type.type)}!"
+      else
+        type.name
       end
     end
 
@@ -200,10 +459,17 @@ module TinyGQL
     # Parses a value that can't contain variables.  Custom scalars that
     # accept list and object literals get the whole literal, which has to be
     # known at parse time so it can be coerced
+    #
+    # Default values of variables can't contain variables either, and pass
+    # nil for `scalar`
     def const_value scalar
       case token_name
       when :VAR_SIGN
-        raise Scalars::InvalidValue, "Variables can't be used inside #{scalar} literals"
+        if scalar
+          raise Scalars::InvalidValue, "Variables can't be used inside #{scalar} literals"
+        else
+          raise Scalars::InvalidValue, "Variables can't be used in default values"
+        end
       when :LBRACKET
         loc = pos
         accept_token

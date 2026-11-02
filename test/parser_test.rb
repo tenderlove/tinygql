@@ -469,6 +469,12 @@ directive @skip(if: Boolean!) on FIELD | FRAGMENT_SPREAD | INLINE_FRAGMENT
       assert_equal doc.index("null"), c.start
     end
 
+    def test_variables_are_numbered_by_name
+      vars = Parser.parse("query($a: Int, $b: Int) { x(a: $b, b: $a) } query { y(c: $c, b: $b) }").find_all(&:variable?)
+      assert_equal %w{ a b b a c b }, vars.map(&:name)
+      assert_equal [0, 1, 1, 0, 2, 1], vars.map(&:index)
+    end
+
     def test_negative_numbers
       values = Parser.parse("{ a(b: -1, c: -1.5e3, d: -0, e: [1, -2]) }").find_all(&:argument?).map(&:value)
       assert_equal [Nodes::IntValue, Nodes::FloatValue, Nodes::IntValue, Nodes::ListValue], values.map(&:class)

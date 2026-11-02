@@ -144,6 +144,35 @@ module TinyGQL
       name
     end
 
+    # Code that parses the value of argument or input field `input`.  A
+    # nullable variable may be used for a non-null one with a default, so
+    # those check variables against the nullable type
+    def input_value input
+      method = value_method input.type
+      if input.type.not_null_type? && input.default_value
+        "at?(:VAR_SIGN) ? variable_usage(#{type_constant input.type.type}) : #{method}"
+      else
+        method
+      end
+    end
+
+    # The constant holding the type node for value method of `type`.
+    # Variable usages are checked against it
+    def type_constant type
+      "TYPE_#{value_method(type).delete_prefix("value_")}"
+    end
+
+    # Ruby code that builds a node for `type`
+    def type_node type
+      if type.not_null_type?
+        "TinyGQL::Nodes::NotNullType.new(0, #{type_node type.type})"
+      elsif type.list_type?
+        "TinyGQL::Nodes::ListType.new(0, #{type_node type.type})"
+      else
+        "TinyGQL::Nodes::NamedType.new(0, #{lit type.name})"
+      end
+    end
+
     # Registers a method that parses object values of input type `name`
     def object_method name
       @object_methods[name] ||= ["object_value_for_#{name}", schema[name]]
@@ -155,6 +184,11 @@ module TinyGQL
       @value_methods.each_value.filter_map { |_, type|
         type.named_type? && schema[type.name].kind == :enum ? schema[type.name] : nil
       }
+    end
+
+    # Types that variables can be declared with
+    def input_types
+      schema.types.each_value.select(&:input?)
     end
 
     def enum_constant type_name
