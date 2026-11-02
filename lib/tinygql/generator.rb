@@ -187,6 +187,81 @@ module TinyGQL
       }
     end
 
+    def coerce_object_method type_name
+      "coerce_object_#{type_name}"
+    end
+
+    def literal_object_method type_name
+      "literal_object_#{type_name}"
+    end
+
+    LITERAL_KINDS = {
+      Nodes::IntValue => :INT,
+      Nodes::FloatValue => :FLOAT,
+      Nodes::StringValue => :STRING,
+      Nodes::BooleanValue => :BOOLEAN,
+      Nodes::EnumValue => :ENUM,
+      Nodes::ListValue => :LIST,
+      Nodes::ObjectValue => :OBJECT,
+    }.freeze
+
+    # Ruby code for the value of a schema default, `node` of `type`.  The
+    # schema's literals weren't coerced when it was parsed, so this calls
+    # the scalars each time a default is used
+    def default_code type, node, seen = []
+      return "nil" if node.null_value?
+
+      if type.not_null_type?
+        default_code type.type, node, seen
+      elsif type.list_type?
+        items = node.list_value? ? node.value : [node]
+        "[#{items.map { default_code(type.type, _1, seen) }.join(", ")}].freeze"
+      else
+        named = schema[type.name]
+        case named.kind
+        when :enum
+          lit node.value
+        when :scalar
+          if BUILTIN_LITERALS.key?(named.name)
+            "@scalars.coerce_literal_#{named.name}(#{lit node.value})"
+          else
+            kind = LITERAL_KINDS.fetch(node.class)
+            text = kind == :LIST || kind == :OBJECT ? node_code(node) : lit(node.value)
+            "@scalars.coerce_literal_#{named.name}(:#{kind}, #{text})"
+          end
+        else
+          # Defaults of input objects can leave out fields that have
+          # defaults of their own, which could refer back to this type
+          if seen.include?(named.name)
+            raise Schema::Error, "Default value of #{named.name} refers to itself"
+          end
+          given = node.values.to_h { [_1.name, _1.value] }
+          pairs = named.fields.each_value.filter_map do |field|
+            value = given.fetch(field.name) { field.default_value }
+            "#{lit field.name} => #{default_code(field.type, value, seen + [named.name])}" if value
+          end
+          "{ #{pairs.join(", ")} }.freeze"
+        end
+      end
+    end
+
+    # Ruby code that builds value node `node`, for custom scalar defaults
+    def node_code node
+      case node
+      when Nodes::ListValue
+        "TinyGQL::Nodes::ListValue.new(0, [#{node.value.map { node_code _1 }.join(", ")}].freeze, nil)"
+      when Nodes::ObjectValue
+        fields = node.values.map { "TinyGQL::Nodes::ObjectField.new(0, #{lit _1.name}, #{node_code _1.value})" }
+        "TinyGQL::Nodes::ObjectValue.new(0, [#{fields.join(", ")}].freeze, nil)"
+      else
+        "TinyGQL::Nodes::#{node.class.name.split("::").last}.new(0, #{lit node.value}, nil)"
+      end
+    end
+
+    def input_objects
+      input_types.select { |t| t.kind == :input }
+    end
+
     # Types that variables can be declared with
     def input_types
       schema.types.each_value.select(&:input?)

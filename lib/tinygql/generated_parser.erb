@@ -323,7 +323,7 @@ end
 
 # Coerces the schema's scalars.  Built in scalars follow the GraphQL spec,
 # and custom scalars raise NotImplementedError until you implement them.
-# Subclass this and pass an instance to `parse` with `scalars:`
+# Subclass this and pass an instance to `parse` and `coerce` with `scalars:`
 class Scalars < TinyGQL::Scalars
 <%- custom_scalars.each_with_index do |scalar, i| -%>
 <%- if i > 0 -%>
@@ -332,12 +332,105 @@ class Scalars < TinyGQL::Scalars
   def coerce_literal_<%= scalar.name %> kind, text
     raise NotImplementedError, "#{self.class}#coerce_literal_<%= scalar.name %> is not implemented"
   end
+
+  def coerce_value_<%= scalar.name %> value
+    raise NotImplementedError, "#{self.class}#coerce_value_<%= scalar.name %> is not implemented"
+  end
 <%- end -%>
 end
 <%- else -%>
 
 # Coerces the schema's scalars.  Subclass this and pass an instance to
-# `parse` with `scalars:` to change how they're coerced
+# `parse` and `coerce` with `scalars:` to change how they're coerced
 class Scalars < TinyGQL::Scalars
 end
 <%- end -%>
+
+# Coerces the schema's input types.  See TinyGQL::Inputs
+class Inputs < TinyGQL::Inputs
+  private
+
+  def coerce_named type, value
+    case INPUT_TYPES[type]
+<%- input_types.each_with_index do |type, i| -%>
+<%- case type.kind -%>
+<%- when :scalar -%>
+    when <%= i %> then @scalars.coerce_value_<%= type.name %>(value)
+<%- when :enum -%>
+    when <%= i %> then coerce_enum <%= enum_constant type.name %>, <%= lit type.name %>, value
+<%- else -%>
+    when <%= i %> then <%= coerce_object_method type.name %> value
+<%- end -%>
+<%- end -%>
+    end
+  end
+
+  # Scalar and enum literals were coerced when they were parsed
+  def literal_named type, node, variables
+<%- if input_objects.empty? -%>
+    node.coerced
+<%- else -%>
+    case INPUT_TYPES[type]
+<%- input_types.each_with_index do |type, i| -%>
+<%- next unless type.kind == :input -%>
+    when <%= i %> then <%= literal_object_method type.name %> node, variables
+<%- end -%>
+    else node.coerced
+    end
+<%- end -%>
+  end
+<%- input_objects.each do |type| -%>
+<%- fields = type.fields.values -%>
+
+  def <%= coerce_object_method type.name %> value
+    input_object! <%= lit type.name %>, value
+    keys = value.keys
+    i = 0
+    while i < keys.length
+      case keys[i]
+      when <%= fields.map { lit _1.name }.join(", ") %>
+      else unknown_input_field! keys[i], <%= lit type.name %>
+      end
+      i += 1
+    end
+
+    fields = {}
+<%- fields.each do |field| -%>
+    if value.key?(<%= lit field.name %>)
+      fields[<%= lit field.name %>] = coerce_field <%= type_constant field.type %>, value[<%= lit field.name %>], <%= lit field.name %>
+<%- if field.default_value -%>
+    else
+      fields[<%= lit field.name %>] = <%= default_code field.type, field.default_value %>
+<%- elsif field.required -%>
+    else
+      missing_input_field! <%= lit field.name %>, <%= lit type.name %>, <%= lit Schema.type_string(field.type) %>
+<%- end -%>
+    end
+<%- end -%>
+    fields.freeze
+  end
+
+  def <%= literal_object_method type.name %> node, variables
+    fields = {}
+    values = node.values
+    i = 0
+    while i < values.length
+      field = values[i]
+      name = field.name
+      value = case name
+<%- fields.each do |field| -%>
+      when <%= lit field.name %> then literal_field <%= type_constant field.type %>, field.value, variables
+<%- end -%>
+      end
+      # Missing variables are like missing fields
+      fields[name] = value unless UNDEFINED.equal?(value)
+      i += 1
+    end
+<%- fields.each do |field| -%>
+<%- next unless field.default_value -%>
+    fields[<%= lit field.name %>] = <%= default_code field.type, field.default_value %> unless fields.key?(<%= lit field.name %>)
+<%- end -%>
+    fields.freeze
+  end
+<%- end -%>
+end

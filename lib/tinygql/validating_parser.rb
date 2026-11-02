@@ -2,6 +2,7 @@
 
 require "tinygql/executable_parser"
 require "tinygql/scalars"
+require "tinygql/inputs"
 require "set"
 
 module TinyGQL
@@ -31,6 +32,14 @@ module TinyGQL
 
     def self.parse doc, scalars: self::Scalars.new
       new(doc, scalars: scalars).parse
+    end
+
+    # Coerces the JSON `variables` of a request that runs operation `op` in
+    # `doc`, a document this parser parsed.  `op` may be nil when `doc` has
+    # one operation.  Returns a frozen Array indexed by Variable#index, or
+    # raises TinyGQL::Inputs::Error.  See TinyGQL::Inputs
+    def self.coerce doc, variables, op: nil, scalars: self::Scalars.new
+      self::Inputs.new(scalars).coerce(doc, variables, op)
     end
 
     def initialize doc, scalars: self.class::Scalars.new
