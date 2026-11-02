@@ -41,9 +41,9 @@ module TinyGQL
     class Field
       attr_reader :name #: String
       attr_reader :arguments #: Array[InputValue]
-      attr_reader :type #: Nodes::type_node
+      attr_reader :type #: Nodes::NamedType | Nodes::ListType | Nodes::NotNullType
 
-      #: (String, Array[InputValue], Nodes::type_node) -> void
+      #: (String, Array[InputValue], Nodes::NamedType | Nodes::ListType | Nodes::NotNullType) -> void
       def initialize name, arguments, type
         @name = name
         @arguments = arguments
@@ -58,10 +58,10 @@ module TinyGQL
     # `default_value` is a value node or nil
     class InputValue
       attr_reader :name #: String
-      attr_reader :type #: Nodes::type_node
-      attr_reader :default_value #: Nodes::value_node?
+      attr_reader :type #: Nodes::NamedType | Nodes::ListType | Nodes::NotNullType
+      attr_reader :default_value #: (Nodes::Value | Nodes::ObjectValue | Nodes::Variable)?
 
-      #: (String, Nodes::type_node, Nodes::value_node?) -> void
+      #: (String, Nodes::NamedType | Nodes::ListType | Nodes::NotNullType, (Nodes::Value | Nodes::ObjectValue | Nodes::Variable)?) -> void
       def initialize name, type, default_value
         @name = name
         @type = type
@@ -75,14 +75,14 @@ module TinyGQL
     BUILTIN_SCALARS = %w{ Int Float String Boolean ID }.freeze #: Array[String]
 
     # The type name with list and non-null wrappers removed
-    #: (Nodes::type_node) -> String
+    #: (Nodes::NamedType | Nodes::ListType | Nodes::NotNullType) -> String
     def self.named_type type
       type = type.type until type.named_type?
       type.name
     end
 
     # The type as it's written in GraphQL, like "[User!]!"
-    #: (Nodes::type_node) -> String
+    #: (Nodes::NamedType | Nodes::ListType | Nodes::NotNullType) -> String
     def self.type_string type
       if type.named_type?
         type.name

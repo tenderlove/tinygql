@@ -140,7 +140,7 @@ module TinyGQL
       Nodes::DirectiveDefinition.new(loc, desc, name, arguments_definition, repeatable, directive_locations)
     end
 
-    #: () -> Array[Nodes::directive_location]
+    #: () -> Array[Nodes::ExecutableDirectiveLocation | Nodes::TypeSystemDirectiveLocation]
     def directive_locations
       accept_token if at?(:PIPE)
       list = [directive_location]
@@ -151,7 +151,7 @@ module TinyGQL
       list.freeze
     end
 
-    #: () -> Nodes::directive_location
+    #: () -> (Nodes::ExecutableDirectiveLocation | Nodes::TypeSystemDirectiveLocation)
     def directive_location
       loc = pos
       directive = expect_token_value :IDENTIFIER

@@ -79,7 +79,7 @@ end
 
 # Parses a constant value of the input type named `type`, for variable
 # defaults
-#: (String) -> TinyGQL::Nodes::value_node
+#: (String) -> (TinyGQL::Nodes::Value | TinyGQL::Nodes::ObjectValue | TinyGQL::Nodes::Variable)
 def named_value type
   case INPUT_TYPES[type]
 <%- input_types.each_with_index do |type, i| -%>
@@ -88,7 +88,7 @@ def named_value type
   end
 end
 
-#: (String?) -> Array[TinyGQL::Nodes::selection]
+#: (String?) -> Array[TinyGQL::Nodes::Field | TinyGQL::Nodes::InlineFragment | TinyGQL::Nodes::FragmentSpread]
 def operation_selection_set type
   case type
   when nil, "query" then <%= selection_set_method schema.roots["query"] %>
@@ -103,7 +103,7 @@ def operation_selection_set type
 end
 
 # Call sites stay monomorphic for the JIT, unlike dispatching with `send`
-#: (String, Integer) -> Array[TinyGQL::Nodes::selection]
+#: (String, Integer) -> Array[TinyGQL::Nodes::Field | TinyGQL::Nodes::InlineFragment | TinyGQL::Nodes::FragmentSpread]
 def composite_selection_set type, loc
   case COMPOSITE_TYPES[type]
 <%- composite_types.each_with_index do |type, i| -%>
@@ -115,7 +115,7 @@ def composite_selection_set type, loc
 end
 <%- composite_types.each do |type| -%>
 
-#: () -> Array[TinyGQL::Nodes::selection]
+#: () -> Array[TinyGQL::Nodes::Field | TinyGQL::Nodes::InlineFragment | TinyGQL::Nodes::FragmentSpread]
 def <%= selection_set_method type.name %>
   expect_token :LCURLY
   list = []
@@ -219,7 +219,7 @@ end
 
 # Parses a value of type <%= Schema.type_string(type) %>
 # Variables aren't allowed when `const` is true
-#: (bool) -> TinyGQL::Nodes::value_node
+#: (bool) -> (TinyGQL::Nodes::Value | TinyGQL::Nodes::ObjectValue | TinyGQL::Nodes::Variable)
 def <%= method %> const
 <%- if type.not_null_type? -%>
   case token_name
@@ -381,7 +381,7 @@ class Inputs < TinyGQL::Inputs
   end
 
   # Scalar and enum literals were coerced when they were parsed
-  #: (String, TinyGQL::Nodes::value_node, Array[untyped]) -> untyped
+  #: (String, TinyGQL::Nodes::Value | TinyGQL::Nodes::ObjectValue | TinyGQL::Nodes::Variable, Array[untyped]) -> untyped
   def literal_named type, node, variables
 <%- if input_objects.empty? -%>
     node.coerced

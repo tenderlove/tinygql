@@ -15,7 +15,7 @@ module TinyGQL
   class Generator
     # @rbs @body: String?
     # @rbs @argument_methods: Array[[String, Schema::Type, Schema::Field]]
-    # @rbs @value_methods: Hash[String, [String, Nodes::type_node]]
+    # @rbs @value_methods: Hash[String, [String, Nodes::NamedType | Nodes::ListType | Nodes::NotNullType]]
     # @rbs @object_methods: Hash[String, [String, Schema::Type]]
     # @rbs @object_bits: Hash[String, Integer]?
 
@@ -149,7 +149,7 @@ module TinyGQL
     # returns its name.  Each distinct type, like "[ID!]", gets one method.
     # Wrapped types and input object fields are registered too, so every
     # method exists before the template renders them.
-    #: (Nodes::type_node) -> String
+    #: (Nodes::NamedType | Nodes::ListType | Nodes::NotNullType) -> String
     def value_method type
       key = Schema.type_string(type)
       return @value_methods[key].first if @value_methods.key?(key)
@@ -181,13 +181,13 @@ module TinyGQL
 
     # The constant holding the type node for value method of `type`.
     # Variable usages are checked against it
-    #: (Nodes::type_node) -> String
+    #: (Nodes::NamedType | Nodes::ListType | Nodes::NotNullType) -> String
     def type_constant type
       "TYPE_#{value_method(type).delete_prefix("value_")}"
     end
 
     # Ruby code that builds a node for `type`
-    #: (Nodes::type_node) -> String
+    #: (Nodes::NamedType | Nodes::ListType | Nodes::NotNullType) -> String
     def type_node type
       if type.not_null_type?
         "TinyGQL::Nodes::NotNullType.new(0, #{type_node type.type})"
@@ -236,7 +236,7 @@ module TinyGQL
     # Ruby code for the value of a schema default, `node` of `type`.  The
     # schema's literals weren't coerced when it was parsed, so this calls
     # the scalars each time a default is used
-    #: (Nodes::type_node, Nodes::value_node, ?Array[String]) -> String
+    #: (Nodes::NamedType | Nodes::ListType | Nodes::NotNullType, Nodes::Value | Nodes::ObjectValue | Nodes::Variable, ?Array[String]) -> String
     def default_code type, node, seen = []
       return "nil" if node.null_value?
 
@@ -275,7 +275,7 @@ module TinyGQL
     end
 
     # Ruby code that builds value node `node`, for custom scalar defaults
-    #: (Nodes::value_node) -> String
+    #: (Nodes::Value | Nodes::ObjectValue | Nodes::Variable) -> String
     def node_code node
       case node
       when Nodes::ListValue

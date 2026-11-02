@@ -17,7 +17,7 @@ nodes:
     - name?: literal String
     - variable_definitions?: list Array[VariableDefinition]
     - directives?: list Array[Directive]
-    - selection_set: list Array[selection]
+    - selection_set: list Array[Field | InlineFragment | FragmentSpread]
 
   # `index` numbers variables by name within a document, so their values
   # can be stored in an array
@@ -36,13 +36,13 @@ nodes:
 
   - name: ListType
     fields:
-    - type: node type_node
+    - type: node NamedType | ListType | NotNullType
 
   - name: VariableDefinition
     fields:
     - variable: node Variable
-    - type: node type_node
-    - default_value?: node value_node
+    - type: node NamedType | ListType | NotNullType
+    - default_value?: node Value | ObjectValue | Variable
     - directives?: list Array[Directive]
 
   # `coerced` is the frozen Ruby value a generated parser's scalars coerced
@@ -53,13 +53,13 @@ nodes:
   # ListValue's items
   - name: Value
     fields:
-      - value: literal String | Array[value_node]
+      - value: literal String | Array[Value | ObjectValue | Variable]
       - coerced?: literal untyped
 
   - name: Argument
     fields:
       - name: literal String
-      - value: node value_node
+      - value: node Value | ObjectValue | Variable
 
   - name: Field
     fields:
@@ -67,13 +67,13 @@ nodes:
       - name: literal String
       - arguments?: list Array[Argument]
       - directives?: list Array[Directive]
-      - selection_set?: list Array[selection]
+      - selection_set?: list Array[Field | InlineFragment | FragmentSpread]
       - parent_type?: literal String
 
   - name: ObjectField
     fields:
       - name: literal String
-      - value: node value_node
+      - value: node Value | ObjectValue | Variable
 
   - name: IntValue
     parent: Value
@@ -114,7 +114,7 @@ nodes:
     fields:
       - type_condition?: node TypeCondition
       - directives?: list Array[Directive]
-      - selection_set: list Array[selection]
+      - selection_set: list Array[Field | InlineFragment | FragmentSpread]
 
   - name: FragmentSpread
     fields:
@@ -127,7 +127,7 @@ nodes:
       - fragment_name: literal String
       - type_condition: node TypeCondition
       - directives?: list Array[Directive]
-      - selection_set: list Array[selection]
+      - selection_set: list Array[Field | InlineFragment | FragmentSpread]
 
   - name: RootOperationTypeDefinition
     fields:
@@ -145,15 +145,15 @@ nodes:
       - description?: node StringValue
       - name: literal String
       - arguments_definition?: list Array[InputValueDefinition]
-      - type: node type_node
+      - type: node NamedType | ListType | NotNullType
       - directives?: list Array[Directive]
 
   - name: InputValueDefinition
     fields:
       - description?: node StringValue
       - name: literal String
-      - type: node type_node
-      - default_value?: node value_node
+      - type: node NamedType | ListType | NotNullType
+      - default_value?: node Value | ObjectValue | Variable
       - directives?: list Array[Directive]
 
   - name: ObjectTypeDefinition
@@ -231,7 +231,7 @@ nodes:
       - name: literal String
       - arguments_definition?: list Array[InputValueDefinition]
       - repeatable: literal bool
-      - directive_locations: list Array[directive_location]
+      - directive_locations: list Array[ExecutableDirectiveLocation | TypeSystemDirectiveLocation]
 
   - name: ScalarTypeExtension
     fields:

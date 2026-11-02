@@ -48,9 +48,9 @@ module TinyGQL
 
     class Scorer # :nodoc:
       # @rbs @limit: Integer
-      # @rbs @operations: Array[Array[Nodes::selection]]
+      # @rbs @operations: Array[Array[Nodes::Field | Nodes::InlineFragment | Nodes::FragmentSpread]]
       # @rbs @fragments: Array[Nodes::FragmentDefinition]
-      # @rbs @bodies: Hash[String, Array[Array[Nodes::selection]]]
+      # @rbs @bodies: Hash[String, Array[Array[Nodes::Field | Nodes::InlineFragment | Nodes::FragmentSpread]]]
       # @rbs @states: Hash[String, Integer | :visiting | nil]
       # @rbs @stack: Array[untyped]
       # @rbs @score: Integer
@@ -99,7 +99,7 @@ module TinyGQL
       # Selection sets are Arrays and fragment spreads are Strings.  :finish
       # is pushed on top of the fragment name and the counters from when its
       # expansion started.
-      #: (Array[Nodes::selection]) -> void
+      #: (Array[Nodes::Field | Nodes::InlineFragment | Nodes::FragmentSpread]) -> void
       def run task
         stack = @stack
         stack.push task

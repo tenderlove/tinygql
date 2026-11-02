@@ -59,7 +59,7 @@ module TinyGQL
     INT_RANGE = (-2**31)..(2**31 - 1) #: Range[Integer]
 
     # A short description of a value node for error messages
-    #: (Nodes::value_node) -> String
+    #: (Nodes::Value | Nodes::ObjectValue | Nodes::Variable) -> String
     def self.describe node
       case node
       when Nodes::StringValue then node.value.dump

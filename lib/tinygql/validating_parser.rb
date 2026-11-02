@@ -43,7 +43,7 @@ module TinyGQL
       attr_accessor :defined #: Integer
       attr_accessor :used #: Integer
       attr_reader :first_use #: Array[Nodes::Variable?]
-      attr_reader :types #: Array[Hash[Nodes::type_node, Nodes::Variable]?]
+      attr_reader :types #: Array[Hash[Nodes::NamedType | Nodes::ListType | Nodes::NotNullType, Nodes::Variable]?]
       attr_reader :spreads #: Array[Nodes::FragmentSpread]
       attr_accessor :state #: (:closing | :closed)?
 
@@ -165,7 +165,7 @@ module TinyGQL
     # Parses a value of `type`, a type node from a variable definition.
     # Variables may be declared with any wrapping of an input type, so this
     # walks the wrappers and parses the named type with named_value
-    #: (Nodes::type_node) -> Nodes::value_node
+    #: (Nodes::NamedType | Nodes::ListType | Nodes::NotNullType) -> (Nodes::Value | Nodes::ObjectValue | Nodes::Variable)
     def typed_value type
       if type.not_null_type?
         null_value! type_string(type) if at?(:NULL)
@@ -202,7 +202,7 @@ module TinyGQL
     # generated parser, so a variable used as the same type many times is
     # only recorded and checked once.  Constant values, like variable
     # defaults, can't use variables
-    #: (Nodes::type_node?, bool) -> Nodes::Variable
+    #: ((Nodes::NamedType | Nodes::ListType | Nodes::NotNullType)?, bool) -> Nodes::Variable
     def variable_usage type, const
       if const
         raise Scalars::InvalidValue, "Variables can't be used in default values"
@@ -222,7 +222,7 @@ module TinyGQL
       var
     end
 
-    #: (String, Nodes::TypeCondition) -> Array[Nodes::selection]
+    #: (String, Nodes::TypeCondition) -> Array[Nodes::Field | Nodes::InlineFragment | Nodes::FragmentSpread]
     def fragment_selection_set name, type_condition
       if @fragments.key?(name)
         validation_error! "Duplicate fragment #{name}", type_condition.start
@@ -413,7 +413,7 @@ module TinyGQL
     # Whether a variable may be used where `location` is expected.  A
     # nullable variable with a default may be used for a non-null type,
     # because the default is used when the variable is missing
-    #: (Nodes::VariableDefinition, Nodes::type_node) -> bool
+    #: (Nodes::VariableDefinition, Nodes::NamedType | Nodes::ListType | Nodes::NotNullType) -> bool
     def variable_allowed? definition, location
       type = definition.type
       if location.not_null_type? && !type.not_null_type?
@@ -425,7 +425,7 @@ module TinyGQL
     end
 
     # Whether a variable of `type` fits `location`, both type nodes
-    #: (Nodes::type_node, Nodes::type_node) -> bool
+    #: (Nodes::NamedType | Nodes::ListType | Nodes::NotNullType, Nodes::NamedType | Nodes::ListType | Nodes::NotNullType) -> bool
     def types_compatible? type, location
       while true
         if location.not_null_type?
@@ -446,7 +446,7 @@ module TinyGQL
       end
     end
 
-    #: (Nodes::type_node) -> String
+    #: (Nodes::NamedType | Nodes::ListType | Nodes::NotNullType) -> String
     def type_string type
       if type.list_type?
         "[#{type_string(type.type)}]"
@@ -568,7 +568,7 @@ module TinyGQL
     end
 
     # The node for a literal of `kind`, with its coerced value deeply frozen
-    #: (Integer, Symbol, (String | Nodes::ListValue | Nodes::ObjectValue), untyped) -> Nodes::value_node
+    #: (Integer, Symbol, (String | Nodes::ListValue | Nodes::ObjectValue), untyped) -> (Nodes::Value | Nodes::ObjectValue | Nodes::Variable)
     def custom_literal loc, kind, text, coerced
       coerced = Ractor.make_shareable(coerced)
       case kind
@@ -586,7 +586,7 @@ module TinyGQL
     # accept list and object literals get the whole literal, which has to be
     # known at parse time so it can be coerced
     #
-    #: (String) -> Nodes::value_node
+    #: (String) -> (Nodes::Value | Nodes::ObjectValue | Nodes::Variable)
     def const_value scalar
       case token_name
       when :VAR_SIGN
@@ -627,7 +627,7 @@ module TinyGQL
     }.freeze #: Hash[String, String]
 
     # A literal of the wrong kind for built in scalar `type`
-    #: (String, Nodes::value_node) -> bot
+    #: (String, Nodes::Value | Nodes::ObjectValue | Nodes::Variable) -> bot
     def invalid_literal! type, node
       raise Scalars::InvalidValue, "#{LITERAL_ERRORS.fetch(type)}: #{Scalars.describe node}"
     end
@@ -642,12 +642,12 @@ module TinyGQL
       raise Scalars::InvalidValue, "Value #{name} does not exist in #{type} enum"
     end
 
-    #: (String, Nodes::value_node) -> bot
+    #: (String, Nodes::Value | Nodes::ObjectValue | Nodes::Variable) -> bot
     def invalid_enum! type, node
       raise Scalars::InvalidValue, "Enum #{type} cannot represent non-enum value: #{Scalars.describe node}"
     end
 
-    #: (String, Nodes::value_node) -> bot
+    #: (String, Nodes::Value | Nodes::ObjectValue | Nodes::Variable) -> bot
     def unexpected_value! type, node
       raise Scalars::InvalidValue, "Expected value of type #{type}, found #{Scalars.describe node}"
     end

@@ -84,7 +84,7 @@ module TinyGQL
     end
 
     # Coerces a JSON value of `type`, a type node
-    #: (Nodes::type_node, untyped) -> untyped
+    #: (Nodes::NamedType | Nodes::ListType | Nodes::NotNullType, untyped) -> untyped
     def coerce_value type, value
       if type.not_null_type?
         raise Scalars::InvalidValue, "Expected non-nullable type #{type_string(type)} not to be null" if value.nil?
@@ -104,7 +104,7 @@ module TinyGQL
 
     # Converts a value node of `type` from a parsed document to a Ruby
     # value.  Variables are looked up in `variables`, from `coerce`
-    #: (Nodes::type_node, Nodes::value_node, Array[untyped]) -> untyped
+    #: (Nodes::NamedType | Nodes::ListType | Nodes::NotNullType, Nodes::Value | Nodes::ObjectValue | Nodes::Variable, Array[untyped]) -> untyped
     def literal_value type, node, variables
       if node.variable?
         variables[node.index]
@@ -148,7 +148,7 @@ module TinyGQL
       found
     end
 
-    #: (Nodes::type_node, Array[untyped]) -> Array[untyped]
+    #: (Nodes::NamedType | Nodes::ListType | Nodes::NotNullType, Array[untyped]) -> Array[untyped]
     def coerce_list type, values
       list = Array.new(values.length)
       i = 0
@@ -163,7 +163,7 @@ module TinyGQL
     end
 
     # Coerces the JSON value of input object field `key`
-    #: (Nodes::type_node, untyped, String) -> untyped
+    #: (Nodes::NamedType | Nodes::ListType | Nodes::NotNullType, untyped, String) -> untyped
     def coerce_field type, value, key
       coerce_value type, value
     rescue Scalars::InvalidValue => e
@@ -199,7 +199,7 @@ module TinyGQL
       raise Scalars::InvalidValue, "Field #{type}.#{name} of required type #{field_type} was not provided"
     end
 
-    #: (Nodes::type_node, Array[Nodes::value_node], Array[untyped]) -> Array[untyped]
+    #: (Nodes::NamedType | Nodes::ListType | Nodes::NotNullType, Array[Nodes::Value | Nodes::ObjectValue | Nodes::Variable], Array[untyped]) -> Array[untyped]
     def literal_list type, nodes, variables
       list = Array.new(nodes.length)
       i = 0
@@ -211,7 +211,7 @@ module TinyGQL
     end
 
     # A list item.  Missing variables in lists are null
-    #: (Nodes::type_node, Nodes::value_node, Array[untyped]) -> untyped
+    #: (Nodes::NamedType | Nodes::ListType | Nodes::NotNullType, Nodes::Value | Nodes::ObjectValue | Nodes::Variable, Array[untyped]) -> untyped
     def literal_item type, node, variables
       value = literal_value(type, node, variables)
       value = nil if UNDEFINED.equal?(value)
@@ -222,7 +222,7 @@ module TinyGQL
     end
 
     # An input object field's value, or UNDEFINED if it's a missing variable
-    #: (Nodes::type_node, Nodes::value_node, Array[untyped]) -> untyped
+    #: (Nodes::NamedType | Nodes::ListType | Nodes::NotNullType, Nodes::Value | Nodes::ObjectValue | Nodes::Variable, Array[untyped]) -> untyped
     def literal_field type, node, variables
       value = literal_value(type, node, variables)
       if value.nil? && type.not_null_type?
@@ -247,7 +247,7 @@ module TinyGQL
       str
     end
 
-    #: (Nodes::type_node) -> String
+    #: (Nodes::NamedType | Nodes::ListType | Nodes::NotNullType) -> String
     def type_string type
       if type.list_type?
         "[#{type_string(type.type)}]"

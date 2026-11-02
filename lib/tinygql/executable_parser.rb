@@ -94,7 +94,7 @@ module TinyGQL
     end
 
     # Hook for parsing the selection set of a fragment definition
-    #: (String, Nodes::TypeCondition) -> Array[Nodes::selection]
+    #: (String, Nodes::TypeCondition) -> Array[Nodes::Field | Nodes::InlineFragment | Nodes::FragmentSpread]
     def fragment_selection_set name, type_condition
       selection_set
     end
@@ -122,12 +122,12 @@ module TinyGQL
 
     # Hook for parsing the selection set of an operation.  `type` is nil for
     # shorthand queries
-    #: (String?) -> Array[Nodes::selection]
+    #: (String?) -> Array[Nodes::Field | Nodes::InlineFragment | Nodes::FragmentSpread]
     def operation_selection_set type
       selection_set
     end
 
-    #: () -> Array[Nodes::selection]
+    #: () -> Array[Nodes::Field | Nodes::InlineFragment | Nodes::FragmentSpread]
     def selection_set
       expect_token(:LCURLY)
       list = []
@@ -138,7 +138,7 @@ module TinyGQL
       list.freeze
     end
 
-    #: () -> Nodes::selection
+    #: () -> (Nodes::Field | Nodes::InlineFragment | Nodes::FragmentSpread)
     def selection
       if at?(:ELLIPSIS)
         selection_fragment
@@ -294,13 +294,13 @@ module TinyGQL
       Nodes::VariableDefinition.new(loc, var, type, default_value, directives)
     end
 
-    #: () -> Nodes::value_node
+    #: () -> (Nodes::Value | Nodes::ObjectValue | Nodes::Variable)
     def default_value
       expect_token(:EQUALS)
       value
     end
 
-    #: () -> Nodes::value_node
+    #: () -> (Nodes::Value | Nodes::ObjectValue | Nodes::Variable)
     def value
       case token_name
       when :INT then int_value
@@ -390,7 +390,7 @@ module TinyGQL
       Nodes::NullValue.new(loc, "null", nil)
     end
 
-    #: () -> Nodes::type_node
+    #: () -> (Nodes::NamedType | Nodes::ListType | Nodes::NotNullType)
     def type
       loc = pos
       type = if at?(:LBRACKET)
