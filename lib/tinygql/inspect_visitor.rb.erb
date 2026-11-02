@@ -15,8 +15,9 @@ module TinyGQL
     # when we hit an element in that list. In this case, we have a special
     # command that replaces the subsequent indent with the given value.
     class Replace # :nodoc:
-      attr_reader :value
+      attr_reader :value #: String
 
+      #: (String) -> void
       def initialize(value)
         @value = value
       end
@@ -25,18 +26,20 @@ module TinyGQL
     private_constant :Replace
 
     # The current prefix string.
-    attr_reader :indent
+    attr_reader :indent #: String
 
     # The list of commands that we need to execute in order to compose the
     # final string.
-    attr_reader :commands
+    attr_reader :commands #: Array[[String | Nodes::Node | Replace, String]]
 
+    #: (?String) -> void
     def initialize(indent = +"")
       @indent = indent
       @commands = []
     end
 
     # Compose an inspect string for the given node.
+    #: (Nodes::Node) -> String
     def self.compose(node)
       visitor = new
       node.accept(visitor)
@@ -44,6 +47,7 @@ module TinyGQL
     end
 
     # Compose the final string.
+    #: () -> String
     def compose
       buffer = +""
       replace = nil
@@ -72,6 +76,7 @@ module TinyGQL
 <%- nodes.each do |node| -%>
 <%- fields = all_fields.(node) -%>
 
+    #: (Nodes::<%= node.name %>) -> void
     def handle_<%= node.human_name %> node
       commands << [inspect_node("<%= node.name %>", node), indent]
       <%- fields.each_with_index do |field, i| -%>
@@ -83,6 +88,7 @@ module TinyGQL
     private
 
     # Compose a header for the given node.
+    #: (String, Nodes::Node) -> String
     def inspect_node(name, node)
       "@ #{name} (start: #{node.start})\n"
     end
@@ -90,6 +96,7 @@ module TinyGQL
     # Compose the lines for a single field.  Field values are checked at
     # runtime because some "literal" fields (like ListValue#value) actually
     # contain nodes.
+    #: (String, untyped, bool) -> void
     def inspect_field(name, value, last)
       branch = last ? "└── " : "├── "
       prefix = "#{indent}#{last ? "    " : "│   "}"
@@ -116,6 +123,7 @@ module TinyGQL
       end
     end
 
+    #: (untyped) -> (Nodes::Node | String)
     def inspect_element(child)
       Nodes::Node === child ? child : "#{child.inspect}\n"
     end

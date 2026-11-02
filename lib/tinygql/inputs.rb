@@ -14,6 +14,8 @@ module TinyGQL
   # a list is expected becomes a list of one.  Input object fields that are
   # missing get their default, or are left out when they don't have one.
   class Inputs
+    # @rbs @scalars: Scalars
+
     # Variables or operation names in a request that don't fit the document
     class Error < StandardError; end
 
@@ -21,14 +23,16 @@ module TinyGQL
     # missing variable isn't the same as null: an argument whose variable
     # is missing gets the argument's default
     class Undefined
+      #: () -> String
       def inspect
         "UNDEFINED"
       end
     end
-    UNDEFINED = Undefined.new.freeze
+    UNDEFINED = Undefined.new.freeze #: Undefined
 
-    EMPTY = [].freeze
+    EMPTY = [].freeze #: Array[untyped]
 
+    #: (Scalars) -> void
     def initialize scalars
       @scalars = scalars
     end
@@ -37,6 +41,7 @@ module TinyGQL
     # `doc`, a document parsed by the same generated parser.  Returns a
     # frozen Array of values indexed by Variable#index, holding UNDEFINED
     # for variables that weren't provided
+    #: (Nodes::Document, untyped, String?) -> Array[untyped]
     def coerce doc, variables, op
       definitions = operation(doc, op).variable_definitions
       return EMPTY unless definitions
@@ -79,6 +84,7 @@ module TinyGQL
     end
 
     # Coerces a JSON value of `type`, a type node
+    #: (Nodes::type_node, untyped) -> untyped
     def coerce_value type, value
       if type.not_null_type?
         raise Scalars::InvalidValue, "Expected non-nullable type #{type_string(type)} not to be null" if value.nil?
@@ -98,6 +104,7 @@ module TinyGQL
 
     # Converts a value node of `type` from a parsed document to a Ruby
     # value.  Variables are looked up in `variables`, from `coerce`
+    #: (Nodes::type_node, Nodes::value_node, Array[untyped]) -> untyped
     def literal_value type, node, variables
       if node.variable?
         variables[node.index]
@@ -120,6 +127,7 @@ module TinyGQL
 
     # Finds the operation a request runs.  Parsed documents have unique
     # operation names, and only one operation if it's anonymous
+    #: (Nodes::Document, String?) -> Nodes::OperationDefinition
     def operation doc, op
       definitions = doc.definitions
       found = nil
@@ -140,6 +148,7 @@ module TinyGQL
       found
     end
 
+    #: (Nodes::type_node, Array[untyped]) -> Array[untyped]
     def coerce_list type, values
       list = Array.new(values.length)
       i = 0
@@ -154,6 +163,7 @@ module TinyGQL
     end
 
     # Coerces the JSON value of input object field `key`
+    #: (Nodes::type_node, untyped, String) -> untyped
     def coerce_field type, value, key
       coerce_value type, value
     rescue Scalars::InvalidValue => e
@@ -161,6 +171,7 @@ module TinyGQL
       raise
     end
 
+    #: (Hash[String, true], String, untyped) -> String
     def coerce_enum values, type, value
       unless value.is_a?(String)
         raise Scalars::InvalidValue, "Enum #{type} cannot represent non-string value: #{value.inspect}"
@@ -171,20 +182,24 @@ module TinyGQL
       value
     end
 
+    #: (String, untyped) -> void
     def input_object! type, value
       unless value.is_a?(Hash)
         raise Scalars::InvalidValue, "Expected type #{type} to be an object, found #{value.inspect}"
       end
     end
 
+    #: (String, String) -> bot
     def unknown_input_field! name, type
       raise Scalars::InvalidValue, "Field #{name} is not defined by type #{type}"
     end
 
+    #: (String, String, String) -> bot
     def missing_input_field! name, type, field_type
       raise Scalars::InvalidValue, "Field #{type}.#{name} of required type #{field_type} was not provided"
     end
 
+    #: (Nodes::type_node, Array[Nodes::value_node], Array[untyped]) -> Array[untyped]
     def literal_list type, nodes, variables
       list = Array.new(nodes.length)
       i = 0
@@ -196,6 +211,7 @@ module TinyGQL
     end
 
     # A list item.  Missing variables in lists are null
+    #: (Nodes::type_node, Nodes::value_node, Array[untyped]) -> untyped
     def literal_item type, node, variables
       value = literal_value(type, node, variables)
       value = nil if UNDEFINED.equal?(value)
@@ -206,6 +222,7 @@ module TinyGQL
     end
 
     # An input object field's value, or UNDEFINED if it's a missing variable
+    #: (Nodes::type_node, Nodes::value_node, Array[untyped]) -> untyped
     def literal_field type, node, variables
       value = literal_value(type, node, variables)
       if value.nil? && type.not_null_type?
@@ -214,6 +231,7 @@ module TinyGQL
       value
     end
 
+    #: (Array[String | Integer]) -> String
     def path_string path
       str = +""
       i = 0
@@ -229,6 +247,7 @@ module TinyGQL
       str
     end
 
+    #: (Nodes::type_node) -> String
     def type_string type
       if type.list_type?
         "[#{type_string(type.type)}]"

@@ -3,34 +3,39 @@ module TinyGQL
 
   module Nodes
     class Node
-      include Enumerable
+      include Enumerable #[Node]
 
       # `start` is the start position of this node in the source document
-      attr_reader :start
+      attr_reader :start #: Integer
 
       # Nodes are frozen once they're built, so a parsed document can be
       # cached and shared.  Subclasses set their fields before calling this.
       # The lexer freezes token values and the parser freezes lists, so the
       # fields are frozen too
+      #: (Integer) -> void
       def initialize start
         @start = start
         freeze
       end
 
       # Return the line of this node given `doc`
+      #: (String) -> Integer
       def line doc
         doc[0, @start].count("\n") + 1
       end
 
 <%- nodes.each do |node| -%>
+      #: () -> bool
       def <%= node.human_name %>?; false; end
 <%- end -%>
       # Returns a tree-shaped string representation of this node and its
       # children.
+      #: () -> String
       def inspect
         InspectVisitor.compose(self)
       end
 
+      #: () { (Node) -> void } -> void
       def each(&blk)
         yield self
         children.each { |v| v.each(&blk) }
@@ -40,8 +45,11 @@ module TinyGQL
 <%- nodes.each do |node| -%>
     class <%= node.name %> < <%= node.parent ? node.parent : "Node" %>
       <%- if node.fields.any? -%>
-      attr_reader <%= node.fields.map { |v| ":" + v.name }.join(", ") %>
+      <%- node.fields.each do |field| -%>
+      attr_reader :<%= field.name %> #: <%= field.rbs %>
+      <%- end -%>
 
+      #: (<%= (["Integer"] + node.fields.map(&:rbs)).join(", ") %>) -> void
       def initialize <%= (["pos"] + node.fields.map(&:name)).join(", ") %>
         <%- node.fields.each do |field| -%>
         @<%= field.name %> = <%= field.name %>
@@ -50,17 +58,21 @@ module TinyGQL
       end
       <%- end -%>
 
+      #: (untyped) -> untyped
       def accept viz
         viz.handle_<%= node.human_name %> self
       end
 
+      #: (untyped, untyped) -> untyped
       def fold viz, seed
         viz.handle_<%= node.human_name %> self, seed
       end
 
+      #: () -> bool
       def <%= node.human_name %>?; true; end
 
       <%- if node.has_children? -%>
+      #: () -> Array[Node]
       def children
         <%= node.children %>
       end

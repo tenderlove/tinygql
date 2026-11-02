@@ -13,6 +13,15 @@ module TinyGQL
   # Scalar literals are checked with `scalars`, which defaults to an instance
   # of the generated parser's Scalars class.  See TinyGQL::Scalars.
   class ValidatingParser < ExecutableParser
+    # @rbs @doc: String
+    # @rbs @scalars: Scalars
+    # @rbs @fragments: Hash[String, String]
+    # @rbs @spreads: Array[Nodes::FragmentSpread | String]
+    # @rbs @operations: Array[Scope]
+    # @rbs @fragment_scopes: Hash[String, Scope]
+    # @rbs @operation_names: Set[String]
+    # @rbs @scope: Scope
+
     class ValidationError < StandardError; end
 
     # The variables an operation or fragment defines and uses.  Variables
@@ -28,8 +37,30 @@ module TinyGQL
     # through other fragments.  `state` is :closing while that happens, and
     # :closed once a fragment's scope includes everything it spreads, so
     # each fragment is only merged once
-    Scope = Struct.new(:node, :definitions, :defined, :used, :first_use, :types, :spreads, :state)
+    class Scope
+      attr_accessor :node #: (Nodes::OperationDefinition | Nodes::FragmentDefinition)?
+      attr_reader :definitions #: Array[Nodes::VariableDefinition?]
+      attr_accessor :defined #: Integer
+      attr_accessor :used #: Integer
+      attr_reader :first_use #: Array[Nodes::Variable?]
+      attr_reader :types #: Array[Hash[Nodes::type_node, Nodes::Variable]?]
+      attr_reader :spreads #: Array[Nodes::FragmentSpread]
+      attr_accessor :state #: (:closing | :closed)?
 
+      #: () -> void
+      def initialize
+        @node = nil
+        @definitions = []
+        @defined = 0
+        @used = 0
+        @first_use = []
+        @types = []
+        @spreads = []
+        @state = nil
+      end
+    end
+
+    #: (String, ?scalars: Scalars) -> Nodes::Document
     def self.parse doc, scalars: self::Scalars.new
       new(doc, scalars: scalars).parse
     end
@@ -38,10 +69,12 @@ module TinyGQL
     # `doc`, a document this parser parsed.  `op` may be nil when `doc` has
     # one operation.  Returns a frozen Array indexed by Variable#index, or
     # raises TinyGQL::Inputs::Error.  See TinyGQL::Inputs
+    #: (Nodes::Document, untyped, ?op: String?, ?scalars: Scalars) -> Array[untyped]
     def self.coerce doc, variables, op: nil, scalars: self::Scalars.new
       self::Inputs.new(scalars).coerce(doc, variables, op)
     end
 
+    #: (String, ?scalars: Scalars) -> void
     def initialize doc, scalars: self.class::Scalars.new
       super(doc)
       @doc = doc
@@ -55,6 +88,7 @@ module TinyGQL
       @scope = nil
     end
 
+    #: () -> Nodes::Document
     def parse
       doc = super
       check_anonymous_operations
@@ -65,6 +99,7 @@ module TinyGQL
 
     private
 
+    #: () -> Nodes::OperationDefinition
     def operation_definition
       scope = @scope = new_scope
       operation = super
@@ -76,6 +111,7 @@ module TinyGQL
       operation
     end
 
+    #: () -> Nodes::FragmentDefinition
     def fragment_definition
       scope = @scope = new_scope
       fragment = super
@@ -84,11 +120,13 @@ module TinyGQL
       fragment
     end
 
+    #: () -> Scope
     def new_scope
-      Scope.new(nil, [], 0, 0, [], [], [], nil)
+      Scope.new
     end
 
 
+    #: () -> Nodes::VariableDefinition
     def variable_definition
       loc = pos
       var_loc = pos
@@ -127,6 +165,7 @@ module TinyGQL
     # Parses a value of `type`, a type node from a variable definition.
     # Variables may be declared with any wrapping of an input type, so this
     # walks the wrappers and parses the named type with named_value
+    #: (Nodes::type_node) -> Nodes::value_node
     def typed_value type
       if type.not_null_type?
         null_value! type_string(type) if at?(:NULL)
@@ -152,6 +191,7 @@ module TinyGQL
 
     # A variable where the schema doesn't say what type is expected, like
     # in a directive argument
+    #: () -> Nodes::Variable
     def variable
       variable_usage nil, false
     end
@@ -162,6 +202,7 @@ module TinyGQL
     # generated parser, so a variable used as the same type many times is
     # only recorded and checked once.  Constant values, like variable
     # defaults, can't use variables
+    #: (Nodes::type_node?, bool) -> Nodes::Variable
     def variable_usage type, const
       if const
         raise Scalars::InvalidValue, "Variables can't be used in default values"
@@ -181,6 +222,7 @@ module TinyGQL
       var
     end
 
+    #: (String, Nodes::TypeCondition) -> Array[Nodes::selection]
     def fragment_selection_set name, type_condition
       if @fragments.key?(name)
         validation_error! "Duplicate fragment #{name}", type_condition.start
@@ -192,6 +234,7 @@ module TinyGQL
 
     # Parses a fragment spread or inline fragment inside a selection set on
     # `parent`
+    #: (String) -> (Nodes::InlineFragment | Nodes::FragmentSpread)
     def schema_selection_fragment parent
       expect_token :ELLIPSIS
 
@@ -220,6 +263,7 @@ module TinyGQL
       end
     end
 
+    #: () -> void
     def check_fragment_spreads
       i = 0
       while i < @spreads.length
@@ -236,6 +280,7 @@ module TinyGQL
 
     # Anonymous operations are only allowed alone, because requests pick
     # operations by name
+    #: () -> void
     def check_anonymous_operations
       return if @operations.length < 2
       i = 0
@@ -251,6 +296,7 @@ module TinyGQL
     # Checks each operation's variables, including the ones used by the
     # fragments it spreads.  Fragments are closed first, so cycles are found
     # even in fragments no operation uses
+    #: () -> void
     def check_variables
       fragments = @fragment_scopes.values
       i = 0
@@ -270,6 +316,7 @@ module TinyGQL
 
     # Merges the scopes of the fragments `scope` spreads into it, closing
     # them first
+    #: (Scope) -> void
     def close_scope scope
       scope.state = :closing
       spreads = scope.spreads
@@ -289,6 +336,7 @@ module TinyGQL
       scope.state = :closed
     end
 
+    #: (Scope, Scope) -> void
     def merge_scope scope, other
       scope.used |= other.used
 
@@ -316,6 +364,7 @@ module TinyGQL
     end
 
     # Checks a closed operation scope
+    #: (Scope) -> void
     def check_scope scope
       operation = scope.node
 
@@ -351,10 +400,12 @@ module TinyGQL
       end
     end
 
+    #: (Integer) -> Integer
     def lowest_bit bits
       (bits & -bits).bit_length - 1
     end
 
+    #: (Nodes::OperationDefinition) -> String
     def operation_label operation
       operation.name ? " by operation #{operation.name}" : ""
     end
@@ -362,6 +413,7 @@ module TinyGQL
     # Whether a variable may be used where `location` is expected.  A
     # nullable variable with a default may be used for a non-null type,
     # because the default is used when the variable is missing
+    #: (Nodes::VariableDefinition, Nodes::type_node) -> bool
     def variable_allowed? definition, location
       type = definition.type
       if location.not_null_type? && !type.not_null_type?
@@ -373,6 +425,7 @@ module TinyGQL
     end
 
     # Whether a variable of `type` fits `location`, both type nodes
+    #: (Nodes::type_node, Nodes::type_node) -> bool
     def types_compatible? type, location
       while true
         if location.not_null_type?
@@ -393,6 +446,7 @@ module TinyGQL
       end
     end
 
+    #: (Nodes::type_node) -> String
     def type_string type
       if type.list_type?
         "[#{type_string(type.type)}]"
@@ -405,6 +459,7 @@ module TinyGQL
 
     # A fragment on `type` may only be spread into `parent` when some object
     # could be both
+    #: (String, String, Integer) -> void
     def check_spread type, parent, loc
       return if type == parent
       validation_error!("Unknown type #{type}", loc) unless composite_type?(type)
@@ -431,38 +486,47 @@ module TinyGQL
       end
     end
 
+    #: (String, Integer) -> bot
     def unknown_type! type, loc
       validation_error! "Unknown type #{type}", loc
     end
 
+    #: (String) -> bot
     def unsupported_operation! type
       validation_error! "Schema does not support #{type} operations", pos
     end
 
+    #: (String, String, Integer) -> bot
     def unknown_field! name, parent, loc
       validation_error! "Field #{name} does not exist on #{parent}", loc
     end
 
+    #: (String, String, Integer) -> bot
     def leaf_selection_set! name, parent, loc
       validation_error! "Field #{parent}.#{name} cannot have a selection set", loc
     end
 
+    #: (String, String, Integer) -> bot
     def missing_selection_set! name, parent, loc
       validation_error! "Field #{parent}.#{name} must have a selection set", loc
     end
 
+    #: (String, String, String, Integer) -> bot
     def unknown_argument! name, field, parent, loc
       validation_error! "Unknown argument #{name} on #{parent}.#{field}", loc
     end
 
+    #: (String, String, String, Integer) -> bot
     def missing_argument! name, field, parent, loc
       validation_error! "Missing required argument #{name} on #{parent}.#{field}", loc
     end
 
+    #: (String, String, String, Integer) -> bot
     def duplicate_argument! name, field, parent, loc
       validation_error! "Duplicate argument #{name} on #{parent}.#{field}", loc
     end
 
+    #: (String, String, String, String, Integer) -> bot
     def invalid_argument! name, field, parent, message, loc
       validation_error! "Invalid value for argument #{name} on #{parent}.#{field}: #{message}", loc
     end
@@ -476,6 +540,7 @@ module TinyGQL
     #   custom_literal loc, kind, text, @scalars.coerce_literal_DateTime(kind, text)
 
     # The kind of literal at the current token, without consuming it
+    #: () -> Symbol
     def custom_literal_kind
       case token_name
       when :INT then :INT
@@ -493,6 +558,7 @@ module TinyGQL
 
     # Consumes a literal of `kind` and returns its text, or the parsed node
     # for lists and objects
+    #: (Symbol, String) -> (String | Nodes::ListValue | Nodes::ObjectValue)
     def custom_literal_text kind, scalar
       case kind
       when :STRING then expect_string_value
@@ -502,6 +568,7 @@ module TinyGQL
     end
 
     # The node for a literal of `kind`, with its coerced value deeply frozen
+    #: (Integer, Symbol, (String | Nodes::ListValue | Nodes::ObjectValue), untyped) -> Nodes::value_node
     def custom_literal loc, kind, text, coerced
       coerced = Ractor.make_shareable(coerced)
       case kind
@@ -519,6 +586,7 @@ module TinyGQL
     # accept list and object literals get the whole literal, which has to be
     # known at parse time so it can be coerced
     #
+    #: (String) -> Nodes::value_node
     def const_value scalar
       case token_name
       when :VAR_SIGN
@@ -556,37 +624,45 @@ module TinyGQL
       "String" => "String cannot represent a non string value",
       "Boolean" => "Boolean cannot represent a non boolean value",
       "ID" => "ID cannot represent a non-string and non-integer value",
-    }.freeze
+    }.freeze #: Hash[String, String]
 
     # A literal of the wrong kind for built in scalar `type`
+    #: (String, Nodes::value_node) -> bot
     def invalid_literal! type, node
       raise Scalars::InvalidValue, "#{LITERAL_ERRORS.fetch(type)}: #{Scalars.describe node}"
     end
 
+    #: (String) -> bot
     def null_value! type
       raise Scalars::InvalidValue, "Expected value of type #{type}, found null"
     end
 
+    #: (String, String) -> bot
     def unknown_enum_value! type, name
       raise Scalars::InvalidValue, "Value #{name} does not exist in #{type} enum"
     end
 
+    #: (String, Nodes::value_node) -> bot
     def invalid_enum! type, node
       raise Scalars::InvalidValue, "Enum #{type} cannot represent non-enum value: #{Scalars.describe node}"
     end
 
+    #: (String, Nodes::value_node) -> bot
     def unexpected_value! type, node
       raise Scalars::InvalidValue, "Expected value of type #{type}, found #{Scalars.describe node}"
     end
 
+    #: (String, String) -> bot
     def unknown_input_field! name, type
       raise Scalars::InvalidValue, "Field #{name} is not defined by type #{type}"
     end
 
+    #: (String) -> bot
     def duplicate_input_field! name
       raise Scalars::InvalidValue, "There can be only one input field named #{name}"
     end
 
+    #: (String, String, String) -> bot
     def missing_input_field! name, type, field_type
       raise Scalars::InvalidValue, "Field #{type}.#{name} of required type #{field_type} was not provided"
     end
@@ -594,6 +670,7 @@ module TinyGQL
     # Parses the rest of a field that has no arguments and no selection set.
     # This is the most common kind of field, so sharing it keeps generated
     # parsers smaller
+    #: (Integer, String?, String, String) -> Nodes::Field
     def leaf_field loc, aliaz, name, parent
       no_arguments! name, parent
       directives = if at?(:DIR_SIGN); self.directives; end
@@ -603,6 +680,7 @@ module TinyGQL
 
     # Raises if the field being parsed has arguments.  For fields that don't
     # take any
+    #: (String, String) -> void
     def no_arguments! field, parent
       return unless at?(:LPAREN)
       accept_token
@@ -610,6 +688,7 @@ module TinyGQL
       unknown_argument! name, field, parent, loc
     end
 
+    #: (String, Integer) -> bot
     def validation_error! message, loc
       line = @doc.byteslice(0, loc).count("\n") + 1
       raise ValidationError, "#{message} line: #{line}"

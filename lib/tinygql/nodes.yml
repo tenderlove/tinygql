@@ -1,74 +1,79 @@
 ---
+# Each field is `name: kind type`.  `kind` is `node`, `list`, or `literal`,
+# and `type` is the field's RBS type, resolved inside TinyGQL::Nodes.  Names
+# ending in `?` are nullable, and their types get a `?` too
 nodes:
   - name: Document
     fields:
-      - definitions: list
+      - definitions: list Array[Node]
 
   - name: ExecutableDefinition
 
   - name: OperationDefinition
     parent: ExecutableDefinition
     fields:
-    - type: literal
-    - name?: literal
-    - variable_definitions?: list
-    - directives?: list
-    - selection_set: list
+    # nil for shorthand queries, like `{ user { name } }`
+    - type: literal String?
+    - name?: literal String
+    - variable_definitions?: list Array[VariableDefinition]
+    - directives?: list Array[Directive]
+    - selection_set: list Array[selection]
 
   # `index` numbers variables by name within a document, so their values
   # can be stored in an array
   - name: Variable
     fields:
-      - name: literal
-      - index: literal
+      - name: literal String
+      - index: literal Integer
 
   - name: NamedType
     fields:
-      - name: literal
+      - name: literal String
 
   - name: NotNullType
     fields:
-    - type
+    - type: node NamedType | ListType
 
   - name: ListType
     fields:
-    - type
+    - type: node type_node
 
   - name: VariableDefinition
     fields:
-    - variable
-    - type
-    - default_value?
-    - directives?: list
+    - variable: node Variable
+    - type: node type_node
+    - default_value?: node value_node
+    - directives?: list Array[Directive]
 
   # `coerced` is the frozen Ruby value a generated parser's scalars coerced
   # a literal to.  Scalars and enums have one.  Lists and input objects are
   # made of their items, so only a custom scalar's list or object literal,
   # like a JSON scalar's, has one.  It's nil for null, and for documents
-  # parsed without a schema
+  # parsed without a schema.  `value` is the literal's text, or a
+  # ListValue's items
   - name: Value
     fields:
-      - value: literal
-      - coerced?: literal
+      - value: literal String | Array[value_node]
+      - coerced?: literal untyped
 
   - name: Argument
     fields:
-      - name: literal
-      - value
+      - name: literal String
+      - value: node value_node
 
   - name: Field
     fields:
-      - aliaz?: literal
-      - name: literal
-      - arguments?: list
-      - directives?: list
-      - selection_set?: list
-      - parent_type?: literal
+      - aliaz?: literal String
+      - name: literal String
+      - arguments?: list Array[Argument]
+      - directives?: list Array[Directive]
+      - selection_set?: list Array[selection]
+      - parent_type?: literal String
 
   - name: ObjectField
     fields:
-      - name: literal
-      - value
+      - name: literal String
+      - value: node value_node
 
   - name: IntValue
     parent: Value
@@ -93,167 +98,167 @@ nodes:
 
   - name: ObjectValue
     fields:
-      - values: list
-      - coerced?: literal
+      - values: list Array[ObjectField]
+      - coerced?: literal untyped
 
   - name: Directive
     fields:
-      - name: literal
-      - arguments?: list
+      - name: literal String
+      - arguments?: list Array[Argument]
 
   - name: TypeCondition
     fields:
-      - named_type
+      - named_type: node NamedType
 
   - name: InlineFragment
     fields:
-      - type_condition?
-      - directives?: list
-      - selection_set: list
+      - type_condition?: node TypeCondition
+      - directives?: list Array[Directive]
+      - selection_set: list Array[selection]
 
   - name: FragmentSpread
     fields:
-      - fragment_name: literal
-      - directives?: list
+      - fragment_name: literal String
+      - directives?: list Array[Directive]
 
   - name: FragmentDefinition
     parent: ExecutableDefinition
     fields:
-      - fragment_name: literal
-      - type_condition
-      - directives?: list
-      - selection_set: list
+      - fragment_name: literal String
+      - type_condition: node TypeCondition
+      - directives?: list Array[Directive]
+      - selection_set: list Array[selection]
 
   - name: RootOperationTypeDefinition
     fields:
-      - operation_type: literal
-      - named_type
+      - operation_type: literal String
+      - named_type: node NamedType
 
   - name: SchemaDefinition
     fields:
-      - description?
-      - directives?: list
-      - root_operation_definitions: list
+      - description?: node StringValue
+      - directives?: list Array[Directive]
+      - root_operation_definitions: list Array[RootOperationTypeDefinition]
 
   - name: FieldDefinition
     fields:
-      - description?
-      - name: literal
-      - arguments_definition?: list
-      - type
-      - directives?: list
+      - description?: node StringValue
+      - name: literal String
+      - arguments_definition?: list Array[InputValueDefinition]
+      - type: node type_node
+      - directives?: list Array[Directive]
 
   - name: InputValueDefinition
     fields:
-      - description?
-      - name: literal
-      - type
-      - default_value?
-      - directives?: list
+      - description?: node StringValue
+      - name: literal String
+      - type: node type_node
+      - default_value?: node value_node
+      - directives?: list Array[Directive]
 
   - name: ObjectTypeDefinition
     fields:
-      - description?
-      - name: literal
-      - implements_interfaces?: list
-      - directives?: list
-      - fields_definition?: list
+      - description?: node StringValue
+      - name: literal String
+      - implements_interfaces?: list Array[NamedType]
+      - directives?: list Array[Directive]
+      - fields_definition?: list Array[FieldDefinition]
 
   - name: InterfaceTypeDefinition
     fields:
-      - description?
-      - name: literal
-      - implements_interfaces?: list
-      - directives?: list
-      - fields_definition?: list
+      - description?: node StringValue
+      - name: literal String
+      - implements_interfaces?: list Array[NamedType]
+      - directives?: list Array[Directive]
+      - fields_definition?: list Array[FieldDefinition]
 
   - name: UnionTypeDefinition
     fields:
-      - description?
-      - name: literal
-      - directives?: list
-      - union_member_types?: list
+      - description?: node StringValue
+      - name: literal String
+      - directives?: list Array[Directive]
+      - union_member_types?: list Array[NamedType]
 
   - name: ScalarTypeDefinition
     fields:
-      - description?
-      - name: literal
-      - directives?: list
+      - description?: node StringValue
+      - name: literal String
+      - directives?: list Array[Directive]
 
   - name: EnumValueDefinition
     fields:
-      - description?
-      - enum_value
-      - directives?: list
+      - description?: node StringValue
+      - enum_value: node EnumValue
+      - directives?: list Array[Directive]
 
   - name: EnumTypeDefinition
     fields:
-      - description?
-      - name: literal
-      - directives?: list
-      - enum_value_definition?: list
+      - description?: node StringValue
+      - name: literal String
+      - directives?: list Array[Directive]
+      - enum_value_definition?: list Array[EnumValueDefinition]
 
   - name: InputObjectTypeDefinition
     fields:
-      - description?
-      - name: literal
-      - directives?: list
-      - input_fields_definition?: list
+      - description?: node StringValue
+      - name: literal String
+      - directives?: list Array[Directive]
+      - input_fields_definition?: list Array[InputValueDefinition]
 
   - name: SchemaExtension
     fields:
-      - directives?: list
-      - root_operation_definitions?: list
+      - directives?: list Array[Directive]
+      - root_operation_definitions?: list Array[RootOperationTypeDefinition]
 
   - name: ObjectTypeExtension
     fields:
-      - name: literal
-      - implements_interfaces?: list
-      - directives?: list
-      - fields_definition?: list
+      - name: literal String
+      - implements_interfaces?: list Array[NamedType]
+      - directives?: list Array[Directive]
+      - fields_definition?: list Array[FieldDefinition]
 
   - name: ExecutableDirectiveLocation
     fields:
-      - name: literal
+      - name: literal String
 
   - name: TypeSystemDirectiveLocation
     fields:
-      - name: literal
+      - name: literal String
 
   - name: DirectiveDefinition
     fields:
-      - description?
-      - name: literal
-      - arguments_definition?: list
-      - repeatable: literal
-      - directive_locations: list
+      - description?: node StringValue
+      - name: literal String
+      - arguments_definition?: list Array[InputValueDefinition]
+      - repeatable: literal bool
+      - directive_locations: list Array[directive_location]
 
   - name: ScalarTypeExtension
     fields:
-      - name: literal
-      - directives?: list
+      - name: literal String
+      - directives?: list Array[Directive]
 
   - name: InterfaceTypeExtension
     fields:
-      - name: literal
-      - implements_interfaces?: list
-      - directives?: list
-      - fields_definition?: list
+      - name: literal String
+      - implements_interfaces?: list Array[NamedType]
+      - directives?: list Array[Directive]
+      - fields_definition?: list Array[FieldDefinition]
 
   - name: UnionTypeExtension
     fields:
-      - name: literal
-      - directives?: list
-      - union_member_types?: list
+      - name: literal String
+      - directives?: list Array[Directive]
+      - union_member_types?: list Array[NamedType]
 
   - name: EnumTypeExtension
     fields:
-      - name: literal
-      - directives?: list
-      - enum_value_definition?: list
+      - name: literal String
+      - directives?: list Array[Directive]
+      - enum_value_definition?: list Array[EnumValueDefinition]
 
   - name: InputObjectTypeExtension
     fields:
-      - name: literal
-      - directives?: list
-      - input_fields_definition?: list
+      - name: literal String
+      - directives?: list Array[Directive]
+      - input_fields_definition?: list Array[InputValueDefinition]

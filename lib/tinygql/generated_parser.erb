@@ -1,25 +1,25 @@
 # Bit positions for object types that belong to an interface or union.
 # Other object types can only overlap with themselves, so they don't need one
 <%- if object_bits.empty? -%>
-OBJECT_BITS = {}.freeze
+OBJECT_BITS = {}.freeze #: Hash[String, Integer]
 <%- else -%>
 OBJECT_BITS = {
 <%- object_bits.each do |name, bit| -%>
   <%= lit name %> => <%= bit %>,
 <%- end -%>
-}.freeze
+}.freeze #: Hash[String, Integer]
 <%- end -%>
 
 # Bitmaps of the object types each interface and union could be, using the
 # positions in OBJECT_BITS
 <%- if abstract_types.empty? -%>
-ABSTRACT_POSSIBLE_TYPES = {}.freeze
+ABSTRACT_POSSIBLE_TYPES = {}.freeze #: Hash[String, Integer]
 <%- else -%>
 ABSTRACT_POSSIBLE_TYPES = {
 <%- abstract_types.each do |type| -%>
   <%= lit type.name %> => <%= possible_types_bitmap type.name %>,
 <%- end -%>
-}.freeze
+}.freeze #: Hash[String, Integer]
 <%- end -%>
 
 # Types that variables can be declared with, mapped to branches in
@@ -28,14 +28,14 @@ INPUT_TYPES = {
 <%- input_types.each_with_index do |type, i| -%>
   <%= lit type.name %> => <%= i %>,
 <%- end -%>
-}.freeze
+}.freeze #: Hash[String, Integer]
 
 # Maps composite type names to branches in composite_selection_set
 COMPOSITE_TYPES = {
 <%- composite_types.each_with_index do |type, i| -%>
   <%= lit type.name %> => <%= i %>,
 <%- end -%>
-}.freeze
+}.freeze #: Hash[String, Integer]
 
 # Each type's field names map to branch numbers in its field_for_* method.
 # Dispatching on an Integer is faster than `case` with String keys, which
@@ -52,29 +52,34 @@ COMPOSITE_TYPES = {
 <%- other.each_with_index do |field, i| -%>
   <%= lit field.name %> => <%= i + 1 %>,
 <%- end -%>
-}.freeze
+}.freeze #: Hash[String, Integer]
 <%- end -%>
 
 private
 
+#: (String) -> bool
 def composite_type? type
   COMPOSITE_TYPES.key?(type)
 end
 
+#: (String) -> Integer?
 def object_bit type
   OBJECT_BITS[type]
 end
 
+#: (String) -> Integer?
 def abstract_possible_types type
   ABSTRACT_POSSIBLE_TYPES[type]
 end
 
+#: (String) -> bool
 def input_type? type
   INPUT_TYPES.key?(type)
 end
 
 # Parses a constant value of the input type named `type`, for variable
 # defaults
+#: (String) -> TinyGQL::Nodes::value_node
 def named_value type
   case INPUT_TYPES[type]
 <%- input_types.each_with_index do |type, i| -%>
@@ -83,6 +88,7 @@ def named_value type
   end
 end
 
+#: (String?) -> Array[TinyGQL::Nodes::selection]
 def operation_selection_set type
   case type
   when nil, "query" then <%= selection_set_method schema.roots["query"] %>
@@ -97,6 +103,7 @@ def operation_selection_set type
 end
 
 # Call sites stay monomorphic for the JIT, unlike dispatching with `send`
+#: (String, Integer) -> Array[TinyGQL::Nodes::selection]
 def composite_selection_set type, loc
   case COMPOSITE_TYPES[type]
 <%- composite_types.each_with_index do |type, i| -%>
@@ -108,6 +115,7 @@ def composite_selection_set type, loc
 end
 <%- composite_types.each do |type| -%>
 
+#: () -> Array[TinyGQL::Nodes::selection]
 def <%= selection_set_method type.name %>
   expect_token :LCURLY
   list = []
@@ -122,6 +130,7 @@ def <%= selection_set_method type.name %>
   list.freeze
 end
 
+#: () -> TinyGQL::Nodes::Field
 def <%= field_method type.name %>
   loc = pos
   name = self.name
@@ -171,6 +180,7 @@ end
 <%- @argument_methods.each do |method, type, field| -%>
 
 # Arguments for <%= type.name %>.<%= field.name %>
+#: (Integer) -> Array[TinyGQL::Nodes::Argument]
 def <%= method %> field_loc
   expect_token :LPAREN
 <%- field.arguments.each_index do |i| -%>
@@ -205,10 +215,11 @@ end
 <%- end -%>
 <%- @value_methods.each_value do |method, type| -%>
 
-<%= type_constant type %> = <%= type_node type %>
+<%= type_constant type %> = <%= type_node type %> #: <%= type.class.name %>
 
 # Parses a value of type <%= Schema.type_string(type) %>
 # Variables aren't allowed when `const` is true
+#: (bool) -> TinyGQL::Nodes::value_node
 def <%= method %> const
 <%- if type.not_null_type? -%>
   case token_name
@@ -280,6 +291,7 @@ end
 <%- fields = named.fields.values -%>
 
 # Parses an object value of input type <%= named.name %>
+#: (bool) -> TinyGQL::Nodes::ObjectValue
 def <%= method %> const
   loc = pos
   expect_token :LCURLY
@@ -317,7 +329,7 @@ end
 <%- enum.values.each do |value| -%>
   <%= lit value %> => true,
 <%- end -%>
-}.freeze
+}.freeze #: Hash[String, true]
 <%- end -%>
 <%- if custom_scalars.any? -%>
 
@@ -329,10 +341,12 @@ class Scalars < TinyGQL::Scalars
 <%- if i > 0 -%>
 
 <%- end -%>
+  #: (Symbol, String | TinyGQL::Nodes::ListValue | TinyGQL::Nodes::ObjectValue) -> untyped
   def coerce_literal_<%= scalar.name %> kind, text
     raise NotImplementedError, "#{self.class}#coerce_literal_<%= scalar.name %> is not implemented"
   end
 
+  #: (untyped) -> untyped
   def coerce_value_<%= scalar.name %> value
     raise NotImplementedError, "#{self.class}#coerce_value_<%= scalar.name %> is not implemented"
   end
@@ -350,6 +364,7 @@ end
 class Inputs < TinyGQL::Inputs
   private
 
+  #: (String, untyped) -> untyped
   def coerce_named type, value
     case INPUT_TYPES[type]
 <%- input_types.each_with_index do |type, i| -%>
@@ -366,6 +381,7 @@ class Inputs < TinyGQL::Inputs
   end
 
   # Scalar and enum literals were coerced when they were parsed
+  #: (String, TinyGQL::Nodes::value_node, Array[untyped]) -> untyped
   def literal_named type, node, variables
 <%- if input_objects.empty? -%>
     node.coerced
@@ -382,6 +398,7 @@ class Inputs < TinyGQL::Inputs
 <%- input_objects.each do |type| -%>
 <%- fields = type.fields.values -%>
 
+  #: (untyped) -> Hash[String, untyped]
   def <%= coerce_object_method type.name %> value
     input_object! <%= lit type.name %>, value
     keys = value.keys
@@ -410,6 +427,7 @@ class Inputs < TinyGQL::Inputs
     fields.freeze
   end
 
+  #: (TinyGQL::Nodes::ObjectValue, Array[untyped]) -> Hash[String, untyped]
   def <%= literal_object_method type.name %> node, variables
     fields = {}
     values = node.values

@@ -46,16 +46,20 @@ module TinyGQL
   #   variables = MyParser.coerce doc, json["variables"], scalars: AppScalars.new
   class Scalars
     class InvalidValue < StandardError
+      # @rbs @path: Array[String | Integer]?
+
       # Where the invalid value is inside a JSON variable, as input object
       # field names and list indexes
+      #: () -> Array[String | Integer]
       def path
         @path ||= []
       end
     end
 
-    INT_RANGE = (-2**31)..(2**31 - 1)
+    INT_RANGE = (-2**31)..(2**31 - 1) #: Range[Integer]
 
     # A short description of a value node for error messages
+    #: (Nodes::value_node) -> String
     def self.describe node
       case node
       when Nodes::StringValue then node.value.dump
@@ -66,6 +70,7 @@ module TinyGQL
       end
     end
 
+    #: (String) -> Integer
     def coerce_literal_Int text
       value = text.to_i
       unless INT_RANGE.cover?(value)
@@ -74,22 +79,27 @@ module TinyGQL
       value
     end
 
+    #: (String) -> Float
     def coerce_literal_Float text
       text.to_f
     end
 
+    #: (String) -> String
     def coerce_literal_String text
       text
     end
 
+    #: (String) -> bool
     def coerce_literal_Boolean text
       text == "true"
     end
 
+    #: (String) -> String
     def coerce_literal_ID text
       text
     end
 
+    #: (untyped) -> Integer
     def coerce_value_Int value
       unless value.is_a?(Integer)
         raise InvalidValue, "Int cannot represent non-integer value: #{value.inspect}"
@@ -100,6 +110,7 @@ module TinyGQL
       value
     end
 
+    #: (untyped) -> Float
     def coerce_value_Float value
       unless value.is_a?(Integer) || (value.is_a?(Float) && value.finite?)
         raise InvalidValue, "Float cannot represent non numeric value: #{value.inspect}"
@@ -107,6 +118,7 @@ module TinyGQL
       value.to_f
     end
 
+    #: (untyped) -> String
     def coerce_value_String value
       unless value.is_a?(String)
         raise InvalidValue, "String cannot represent a non string value: #{value.inspect}"
@@ -114,6 +126,7 @@ module TinyGQL
       value
     end
 
+    #: (untyped) -> bool
     def coerce_value_Boolean value
       unless true == value || false == value
         raise InvalidValue, "Boolean cannot represent a non boolean value: #{value.inspect}"
@@ -121,6 +134,7 @@ module TinyGQL
       value
     end
 
+    #: (untyped) -> String
     def coerce_value_ID value
       if value.is_a?(String)
         value

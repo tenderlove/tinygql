@@ -7,6 +7,7 @@ module TinyGQL
   class Parser < ExecutableParser
     private
 
+    #: () -> Nodes::Node
     def definition
       case token_name
       when :FRAGMENT, :QUERY, :MUTATION, :SUBSCRIPTION, :LCURLY
@@ -20,6 +21,7 @@ module TinyGQL
       end
     end
 
+    #: () -> Nodes::Node
     def type_system_extension
       expect_token :EXTEND
       case token_name
@@ -35,6 +37,7 @@ module TinyGQL
       end
     end
 
+    #: () -> Nodes::SchemaExtension
     def schema_extension
       loc = pos
       expect_token :SCHEMA
@@ -48,6 +51,7 @@ module TinyGQL
       Nodes::SchemaExtension.new(loc, directives, defs)
     end
 
+    #: () -> Nodes::InputObjectTypeExtension
     def input_object_type_extension
       loc = pos
       expect_token :INPUT
@@ -57,6 +61,7 @@ module TinyGQL
       Nodes::InputObjectTypeExtension.new(loc, name, directives, input_fields_definition)
     end
 
+    #: () -> Nodes::EnumTypeExtension
     def enum_type_extension
       loc = pos
       expect_token :ENUM
@@ -66,6 +71,7 @@ module TinyGQL
       Nodes::EnumTypeExtension.new(loc, name, directives, enum_values_definition)
     end
 
+    #: () -> Nodes::UnionTypeExtension
     def union_type_extension
       loc = pos
       expect_token :UNION
@@ -75,6 +81,7 @@ module TinyGQL
       Nodes::UnionTypeExtension.new(loc, name, directives, union_member_types)
     end
 
+    #: () -> Nodes::InterfaceTypeExtension
     def interface_type_extension
       loc = pos
       expect_token :INTERFACE
@@ -85,6 +92,7 @@ module TinyGQL
       Nodes::InterfaceTypeExtension.new(loc, name, implements_interfaces, directives, fields_definition)
     end
 
+    #: () -> Nodes::ScalarTypeExtension
     def scalar_type_extension
       loc = pos
       expect_token :SCALAR
@@ -93,6 +101,7 @@ module TinyGQL
       Nodes::ScalarTypeExtension.new(loc, name, directives)
     end
 
+    #: () -> Nodes::ObjectTypeExtension
     def object_type_extension
       loc = pos
       expect_token :TYPE
@@ -103,6 +112,7 @@ module TinyGQL
       Nodes::ObjectTypeExtension.new(loc, name, implements_interfaces, directives, fields_definition)
     end
 
+    #: (Nodes::StringValue?) -> Nodes::Node
     def type_system_definition desc
       case token_name
       when :SCHEMA then schema_definition(desc)
@@ -112,6 +122,7 @@ module TinyGQL
       end
     end
 
+    #: (Nodes::StringValue?) -> Nodes::DirectiveDefinition
     def directive_defintion desc
       loc = pos
       expect_token :DIRECTIVE
@@ -129,6 +140,7 @@ module TinyGQL
       Nodes::DirectiveDefinition.new(loc, desc, name, arguments_definition, repeatable, directive_locations)
     end
 
+    #: () -> Array[Nodes::directive_location]
     def directive_locations
       accept_token if at?(:PIPE)
       list = [directive_location]
@@ -139,6 +151,7 @@ module TinyGQL
       list.freeze
     end
 
+    #: () -> Nodes::directive_location
     def directive_location
       loc = pos
       directive = expect_token_value :IDENTIFIER
@@ -163,6 +176,7 @@ module TinyGQL
       end
     end
 
+    #: (Nodes::StringValue?) -> Nodes::Node
     def type_definition desc
       case token_name
       when :TYPE then object_type_definition(desc)
@@ -176,6 +190,7 @@ module TinyGQL
       end
     end
 
+    #: (Nodes::StringValue?) -> Nodes::InputObjectTypeDefinition
     def input_object_type_definition desc
       loc = pos
       expect_token :INPUT
@@ -185,6 +200,7 @@ module TinyGQL
       Nodes::InputObjectTypeDefinition.new(loc, desc, name, directives, input_fields_definition)
     end
 
+    #: () -> Array[Nodes::InputValueDefinition]
     def input_fields_definition
       expect_token :LCURLY
       list = []
@@ -195,6 +211,7 @@ module TinyGQL
       list.freeze
     end
 
+    #: (Nodes::StringValue?) -> Nodes::EnumTypeDefinition
     def enum_type_definition desc
       loc = pos
       expect_token :ENUM
@@ -204,6 +221,7 @@ module TinyGQL
       Nodes::EnumTypeDefinition.new(loc, desc, name, directives, enum_values_definition)
     end
 
+    #: () -> Array[Nodes::EnumValueDefinition]
     def enum_values_definition
       expect_token :LCURLY
       list = []
@@ -214,6 +232,7 @@ module TinyGQL
       list.freeze
     end
 
+    #: () -> Nodes::EnumValueDefinition
     def enum_value_definition
       loc = pos
       description = if at?(:STRING); string_value; end
@@ -222,6 +241,7 @@ module TinyGQL
       Nodes::EnumValueDefinition.new(loc, description, enum_value, directives)
     end
 
+    #: (Nodes::StringValue?) -> Nodes::ScalarTypeDefinition
     def scalar_type_definition desc
       loc = pos
       expect_token :SCALAR
@@ -230,6 +250,7 @@ module TinyGQL
       Nodes::ScalarTypeDefinition.new(loc, desc, name, directives)
     end
 
+    #: (Nodes::StringValue?) -> Nodes::UnionTypeDefinition
     def union_type_definition desc
       loc = pos
       expect_token :UNION
@@ -239,6 +260,7 @@ module TinyGQL
       Nodes::UnionTypeDefinition.new(loc, desc, name, directives, union_member_types)
     end
 
+    #: () -> Array[Nodes::NamedType]
     def union_member_types
       expect_token :EQUALS
       accept_token if at?(:PIPE)
@@ -250,6 +272,7 @@ module TinyGQL
       list.freeze
     end
 
+    #: (Nodes::StringValue?) -> Nodes::InterfaceTypeDefinition
     def interface_type_definition desc
       loc = pos
       expect_token :INTERFACE
@@ -260,6 +283,7 @@ module TinyGQL
       Nodes::InterfaceTypeDefinition.new(loc, desc, name, implements_interfaces, directives, fields_definition)
     end
 
+    #: (Nodes::StringValue?) -> Nodes::ObjectTypeDefinition
     def object_type_definition desc
       loc = pos
       expect_token :TYPE
@@ -271,6 +295,7 @@ module TinyGQL
       Nodes::ObjectTypeDefinition.new(loc, desc, name, implements_interfaces, directives, fields_definition)
     end
 
+    #: () -> Array[Nodes::FieldDefinition]
     def fields_definition
       expect_token :LCURLY
       list = []
@@ -281,6 +306,7 @@ module TinyGQL
       list.freeze
     end
 
+    #: () -> Nodes::FieldDefinition
     def field_definition
       loc = pos
       description = if at?(:STRING); string_value; end
@@ -293,6 +319,7 @@ module TinyGQL
       Nodes::FieldDefinition.new(loc, description, name, arguments_definition, type, directives)
     end
 
+    #: () -> Array[Nodes::InputValueDefinition]
     def arguments_definition
       expect_token :LPAREN
       list = []
@@ -303,6 +330,7 @@ module TinyGQL
       list.freeze
     end
 
+    #: () -> Nodes::InputValueDefinition
     def input_value_definition
       loc = pos
       description = if at?(:STRING); string_value; end
@@ -314,6 +342,7 @@ module TinyGQL
       Nodes::InputValueDefinition.new(loc, description, name, type, default_value, directives)
     end
 
+    #: () -> Array[Nodes::NamedType]
     def implements_interfaces
       expect_token :IMPLEMENTS
       accept_token if at?(:AMP)
@@ -331,6 +360,7 @@ module TinyGQL
       list.freeze
     end
 
+    #: (Nodes::StringValue?) -> Nodes::SchemaDefinition
     def schema_definition desc
       loc = pos
       expect_token :SCHEMA
@@ -342,6 +372,7 @@ module TinyGQL
       Nodes::SchemaDefinition.new(loc, desc, directives, defs)
     end
 
+    #: () -> Array[Nodes::RootOperationTypeDefinition]
     def root_operation_type_definition
       list = []
       while !at?(:RCURLY)

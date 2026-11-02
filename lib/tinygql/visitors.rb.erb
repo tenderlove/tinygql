@@ -2,6 +2,7 @@ module TinyGQL
   module Visitors
     module Visitor
 <% nodes.each do |node| %>
+      #: (Nodes::<%= node.name %>) -> void
       def handle_<%= node.human_name %> obj
       <%- node.fields.find_all(&:visitable?).each do |field| -%>
         <%- if field.list? -%>
@@ -17,6 +18,7 @@ module TinyGQL
 
     module Fold
 <% nodes.each do |node| %>
+      #: (Nodes::<%= node.name %>, untyped) -> untyped
       def handle_<%= node.human_name %> obj, seed
       <%- node.fields.find_all(&:visitable?).each do |field| -%>
         <%- if field.list? -%>
@@ -33,6 +35,7 @@ module TinyGQL
 
     module Null
 <% nodes.each do |node| %>
+      #: (Nodes::<%= node.name %>) -> nil
       def handle_<%= node.human_name %> obj
       end
 <% end %>
@@ -40,6 +43,7 @@ module TinyGQL
 
     module NullFold
 <% nodes.each do |node| %>
+      #: (Nodes::<%= node.name %>, untyped) -> nil
       def handle_<%= node.human_name %> obj, _
       end
 <% end %>

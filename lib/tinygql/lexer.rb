@@ -4,18 +4,22 @@ require "strscan"
 
 module TinyGQL
   class Lexer
-    IDENTIFIER =    /[_A-Za-z][_0-9A-Za-z]*\b/
+    # @rbs @string: String
+    # @rbs @scan: StringScanner
+    # @rbs @len: Integer
+
+    IDENTIFIER =    /[_A-Za-z][_0-9A-Za-z]*\b/ #: Regexp
     IGNORE   =       %r{
       (?:
         [, \c\r\n\t]+ |
         \#.*$
       )*
-    }x
-    INT =           /[-]?(?:[0]|[1-9][0-9]*)/
-    FLOAT_DECIMAL = /[.][0-9]+/
-    FLOAT_EXP =     /[eE][+-]?[0-9]+/
-    FLOAT_PART = /#{FLOAT_DECIMAL}#{FLOAT_EXP}|#{FLOAT_DECIMAL}|#{FLOAT_EXP}/
-    NUMERIC =  /#{INT}(#{FLOAT_PART})?/
+    }x #: Regexp
+    INT =           /[-]?(?:[0]|[1-9][0-9]*)/ #: Regexp
+    FLOAT_DECIMAL = /[.][0-9]+/ #: Regexp
+    FLOAT_EXP =     /[eE][+-]?[0-9]+/ #: Regexp
+    FLOAT_PART = /#{FLOAT_DECIMAL}#{FLOAT_EXP}|#{FLOAT_DECIMAL}|#{FLOAT_EXP}/ #: Regexp
+    NUMERIC =  /#{INT}(#{FLOAT_PART})?/ #: Regexp
 
     KEYWORDS = [
       "on",
@@ -37,9 +41,9 @@ module TinyGQL
       "input",
       "directive",
       "repeatable"
-    ].freeze
+    ].freeze #: Array[String]
 
-    KW_RE = /#{Regexp.union(KEYWORDS.sort)}\b/
+    KW_RE = /#{Regexp.union(KEYWORDS.sort)}\b/ #: Regexp
 
     KW_FP3 = KEYWORDS.filter { |w|
       w.length >= 4
@@ -48,7 +52,7 @@ module TinyGQL
         w.getbyte(1) * 169 + w.getbyte(2) * 13 + w.getbyte(3),
         w.upcase.to_sym
       ]
-    }.to_h.freeze
+    }.to_h.freeze #: Hash[Integer, Symbol]
 
     module Literals
       LCURLY =        '{'
@@ -71,29 +75,29 @@ module TinyGQL
     include Literals
 
     QUOTE =         '"'
-    UNICODE_DIGIT = /[0-9A-Za-z]/
-    FOUR_DIGIT_UNICODE = /#{UNICODE_DIGIT}{4}/
-    N_DIGIT_UNICODE = %r{#{LCURLY}#{UNICODE_DIGIT}{4,}#{RCURLY}}x
-    UNICODE_ESCAPE = %r{\\u(?:#{FOUR_DIGIT_UNICODE}|#{N_DIGIT_UNICODE})}
+    UNICODE_DIGIT = /[0-9A-Za-z]/ #: Regexp
+    FOUR_DIGIT_UNICODE = /#{UNICODE_DIGIT}{4}/ #: Regexp
+    N_DIGIT_UNICODE = %r{#{LCURLY}#{UNICODE_DIGIT}{4,}#{RCURLY}}x #: Regexp
+    UNICODE_ESCAPE = %r{\\u(?:#{FOUR_DIGIT_UNICODE}|#{N_DIGIT_UNICODE})} #: Regexp
     # # https://graphql.github.io/graphql-spec/June2018/#sec-String-Value
-    STRING_ESCAPE = %r{[\\][\\/bfnrt]}
+    STRING_ESCAPE = %r{[\\][\\/bfnrt]} #: Regexp
     BLOCK_QUOTE =   '"""'
-    ESCAPED_QUOTE = /\\"/;
-    STRING_CHAR = /#{ESCAPED_QUOTE}|[^"\\]|#{UNICODE_ESCAPE}|#{STRING_ESCAPE}/
+    ESCAPED_QUOTE = /\\"/; #: Regexp
+    STRING_CHAR = /#{ESCAPED_QUOTE}|[^"\\]|#{UNICODE_ESCAPE}|#{STRING_ESCAPE}/ #: Regexp
 
     PUNCT_LUT = Literals.constants.each_with_object([]) { |n, o|
       o[Literals.const_get(n).ord] = n
-    }.freeze
+    }.freeze #: Array[Symbol?]
 
-    LEAD_BYTES = Array.new(255) { 0 }
+    LEAD_BYTES = Array.new(255) { 0 } #: Array[Integer]
 
     module LeadBytes
-      INT = 1 << 0
-      KW = 1 << 1
-      ELLIPSIS = 1 << 2
-      STRING = 1 << 3
-      PUNCT = 1 << 4
-      IDENT = 1 << 5
+      INT = 1 << 0 #: Integer
+      KW = 1 << 1 #: Integer
+      ELLIPSIS = 1 << 2 #: Integer
+      STRING = 1 << 3 #: Integer
+      PUNCT = 1 << 4 #: Integer
+      IDENT = 1 << 5 #: Integer
     end
 
     10.times { |i| LEAD_BYTES[i.to_s.ord] |= LeadBytes::INT }
@@ -116,7 +120,7 @@ module TinyGQL
     # Frozen lookup tables can be read from any Ractor
     LEAD_BYTES.freeze
 
-    QUOTED_STRING = %r{#{QUOTE} ((?:#{STRING_CHAR})*) #{QUOTE}}x
+    QUOTED_STRING = %r{#{QUOTE} ((?:#{STRING_CHAR})*) #{QUOTE}}x #: Regexp
     BLOCK_STRING = %r{
         #{BLOCK_QUOTE}
     ((?: [^"\\]               |  # Any characters that aren't a quote or slash
@@ -127,8 +131,9 @@ module TinyGQL
     )*
     (?:"")?)
         #{BLOCK_QUOTE}
-    }xm
+    }xm #: Regexp
 
+    #: (String) -> void
     def initialize string
       raise unless string.valid_encoding?
 
@@ -138,16 +143,19 @@ module TinyGQL
       @len = nil
     end
 
-    attr_reader :start
+    attr_reader :start #: Integer
 
+    #: () -> Integer
     def line
       @scan.string[0, @scan.pos].count("\n") + 1
     end
 
+    #: () -> bool
     def done?
       @scan.eos?
     end
 
+    #: () -> (Symbol | false)
     def advance
       @scan.skip(IGNORE)
 
@@ -217,10 +225,12 @@ module TinyGQL
     end
 
     # Token values are frozen so the nodes built from them can be shared
+    #: () -> String
     def token_value
       @string.byteslice(@start, @len).freeze
     end
 
+    #: () -> String
     def string_value
       # Unescaping modifies the string, so freeze it once it's done
       str = @string.byteslice(@start, @len)
@@ -235,6 +245,7 @@ module TinyGQL
       end
     end
 
+    #: () -> [Symbol, String]?
     def next_token
       return unless tok = advance
       val = case tok
@@ -254,6 +265,7 @@ module TinyGQL
     # To avoid allocating more strings, this modifies the string passed into it
     # One pass over the escapes, so a backslash produced by `\\` is never
     # read again as the start of another escape
+    #: (String) -> nil
     def replace_escaped_characters_in_place(raw_string)
       raw_string.gsub!(ESCAPE_OR_UTF_8) do |matched_str|
         simple = ESCAPES_REPLACE[matched_str]
@@ -280,7 +292,7 @@ module TinyGQL
       nil
     end
 
-    ESCAPES = /\\["\\\/bfnrt]/
+    ESCAPES = /\\["\\\/bfnrt]/ #: Regexp
     ESCAPES_REPLACE = {
       '\\"' => '"',
       "\\\\" => "\\",
@@ -290,17 +302,19 @@ module TinyGQL
       "\\n" => "\n",
       "\\r" => "\r",
       "\\t" => "\t",
-    }.freeze
-    UTF_8 = /\\u(?:([\dAa-f]{4})|\{([\da-f]{4,})\})(?:\\u([\dAa-f]{4}))?/i
-    VALID_STRING = /\A(?:[^\\]|#{ESCAPES}|#{UTF_8})*\z/o
-    ESCAPE_OR_UTF_8 = /#{ESCAPES}|#{UTF_8}/
-    BLANK_LINE = /\A[ \t]*\z/
+    }.freeze #: Hash[String, String]
+    UTF_8 = /\\u(?:([\dAa-f]{4})|\{([\da-f]{4,})\})(?:\\u([\dAa-f]{4}))?/i #: Regexp
+    VALID_STRING = /\A(?:[^\\]|#{ESCAPES}|#{UTF_8})*\z/o #: Regexp
+    ESCAPE_OR_UTF_8 = /#{ESCAPES}|#{UTF_8}/ #: Regexp
+    BLANK_LINE = /\A[ \t]*\z/ #: Regexp
 
+    #: (String) -> String
     def emit_block(value)
       value = trim_whitespace(value)
       emit_string(value)
     end
 
+    #: (String) -> String
     def emit_string(value)
       if !value.valid_encoding? || !value.match?(VALID_STRING)
         raise "Bad unicode escape in string"
@@ -315,6 +329,7 @@ module TinyGQL
       end
     end
 
+    #: (String) -> String
     def trim_whitespace(str)
       # Early return for the most common cases:
       if str == ""

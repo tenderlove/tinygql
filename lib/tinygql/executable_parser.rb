@@ -7,42 +7,51 @@ module TinyGQL
   # Parses executable documents: operations and fragments.  Parser extends
   # this with the type system definitions used in schemas
   class ExecutableParser
+    # @rbs @lexer: Lexer
+    # @rbs @variable_ids: Hash[String, Integer]
+
     class UnexpectedToken < StandardError; end
 
     # Keywords are only reserved in certain positions, everywhere else they
     # are valid names
-    KEYWORD_TOKENS = Lexer::KEYWORDS.map { |kw| kw.upcase.to_sym }.freeze
+    KEYWORD_TOKENS = Lexer::KEYWORDS.map { |kw| kw.upcase.to_sym }.freeze #: Array[Symbol]
 
     # Enum values may be any name except true, false, or null
-    ENUM_VALUE_KEYWORD_TOKENS = (KEYWORD_TOKENS - [:TRUE, :FALSE, :NULL]).freeze
+    ENUM_VALUE_KEYWORD_TOKENS = (KEYWORD_TOKENS - [:TRUE, :FALSE, :NULL]).freeze #: Array[Symbol]
 
+    #: (String) -> Nodes::Document
     def self.parse doc
       new(doc).parse
     end
 
+    #: (String) -> void
     def initialize doc
       @lexer = Lexer.new doc
       @variable_ids = {}
       accept_token
     end
 
+    #: () -> Nodes::Document
     def parse
       document
     end
 
     private
 
-    attr_reader :token_name
+    attr_reader :token_name #: Symbol | false
 
+    #: () -> Integer
     def pos
       @lexer.start
     end
 
+    #: () -> Nodes::Document
     def document
       loc = pos
       Nodes::Document.new loc, definition_list
     end
 
+    #: () -> Array[Nodes::Node]
     def definition_list
       list = []
       while !@lexer.done?
@@ -51,6 +60,7 @@ module TinyGQL
       list.freeze
     end
 
+    #: () -> Nodes::Node
     def definition
       case token_name
       when :FRAGMENT, :QUERY, :MUTATION, :SUBSCRIPTION, :LCURLY
@@ -60,6 +70,7 @@ module TinyGQL
       end
     end
 
+    #: () -> (Nodes::OperationDefinition | Nodes::FragmentDefinition)
     def executable_definition
       if at?(:FRAGMENT)
         fragment_definition
@@ -68,6 +79,7 @@ module TinyGQL
       end
     end
 
+    #: () -> Nodes::FragmentDefinition
     def fragment_definition
       loc = pos
       expect_token :FRAGMENT
@@ -82,10 +94,12 @@ module TinyGQL
     end
 
     # Hook for parsing the selection set of a fragment definition
+    #: (String, Nodes::TypeCondition) -> Array[Nodes::selection]
     def fragment_selection_set name, type_condition
       selection_set
     end
 
+    #: () -> Nodes::OperationDefinition
     def operation_definition
       loc = pos
       case token_name
@@ -108,10 +122,12 @@ module TinyGQL
 
     # Hook for parsing the selection set of an operation.  `type` is nil for
     # shorthand queries
+    #: (String?) -> Array[Nodes::selection]
     def operation_selection_set type
       selection_set
     end
 
+    #: () -> Array[Nodes::selection]
     def selection_set
       expect_token(:LCURLY)
       list = []
@@ -122,6 +138,7 @@ module TinyGQL
       list.freeze
     end
 
+    #: () -> Nodes::selection
     def selection
       if at?(:ELLIPSIS)
         selection_fragment
@@ -130,6 +147,7 @@ module TinyGQL
       end
     end
 
+    #: () -> (Nodes::InlineFragment | Nodes::FragmentSpread)
     def selection_fragment
       expect_token :ELLIPSIS
 
@@ -144,6 +162,7 @@ module TinyGQL
       end
     end
 
+    #: () -> Nodes::FragmentSpread
     def fragment_spread
       loc = pos
       name = self.name
@@ -154,6 +173,7 @@ module TinyGQL
       Nodes::FragmentSpread.new(loc, name, directives)
     end
 
+    #: () -> Nodes::InlineFragment
     def inline_fragment
       loc = pos
       type_condition = if at?(:ON)
@@ -167,12 +187,14 @@ module TinyGQL
       Nodes::InlineFragment.new(loc, type_condition, directives, selection_set)
     end
 
+    #: () -> Nodes::TypeCondition
     def type_condition
       loc = pos
       expect_token :ON
       Nodes::TypeCondition.new(loc, named_type)
     end
 
+    #: () -> Nodes::Field
     def field
       loc = pos
       name = self.name
@@ -192,6 +214,7 @@ module TinyGQL
       Nodes::Field.new(loc, aliaz, name, arguments, directives, selection_set, nil)
     end
 
+    #: () -> String
     def operation_type
       val = if at?(:QUERY)
         "query"
@@ -206,6 +229,7 @@ module TinyGQL
       val
     end
 
+    #: () -> Array[Nodes::Directive]
     def directives
       list = []
       while at?(:DIR_SIGN)
@@ -214,6 +238,7 @@ module TinyGQL
       list.freeze
     end
 
+    #: () -> Nodes::Directive
     def directive
       loc = pos
       expect_token(:DIR_SIGN)
@@ -225,6 +250,7 @@ module TinyGQL
       Nodes::Directive.new(loc, name, arguments)
     end
 
+    #: () -> Array[Nodes::Argument]
     def arguments
       expect_token(:LPAREN)
       args = []
@@ -235,6 +261,7 @@ module TinyGQL
       args.freeze
     end
 
+    #: () -> Nodes::Argument
     def argument
       loc = pos
       name = self.name
@@ -242,6 +269,7 @@ module TinyGQL
       Nodes::Argument.new(loc, name, value)
     end
 
+    #: () -> Array[Nodes::VariableDefinition]
     def variable_definitions
       expect_token(:LPAREN)
       defs = []
@@ -252,6 +280,7 @@ module TinyGQL
       defs.freeze
     end
 
+    #: () -> Nodes::VariableDefinition
     def variable_definition
       loc = pos
       var = variable if at?(:VAR_SIGN)
@@ -265,11 +294,13 @@ module TinyGQL
       Nodes::VariableDefinition.new(loc, var, type, default_value, directives)
     end
 
+    #: () -> Nodes::value_node
     def default_value
       expect_token(:EQUALS)
       value
     end
 
+    #: () -> Nodes::value_node
     def value
       case token_name
       when :INT then int_value
@@ -286,6 +317,7 @@ module TinyGQL
       end
     end
 
+    #: () -> Nodes::ObjectValue
     def object_value
       start = pos
       expect_token(:LCURLY)
@@ -300,6 +332,7 @@ module TinyGQL
       Nodes::ObjectValue.new(start, list.freeze, nil)
     end
 
+    #: () -> Nodes::ListValue
     def list_value
       loc = pos
       expect_token(:LBRACKET)
@@ -311,6 +344,7 @@ module TinyGQL
       Nodes::ListValue.new(loc, list.freeze, nil)
     end
 
+    #: () -> Nodes::EnumValue
     def enum_value
       case token_name
       when :IDENTIFIER, *ENUM_VALUE_KEYWORD_TOKENS
@@ -320,18 +354,22 @@ module TinyGQL
       end
     end
 
+    #: () -> Nodes::FloatValue
     def float_value
       Nodes::FloatValue.new(pos, expect_token_value(:FLOAT), nil)
     end
 
+    #: () -> Nodes::IntValue
     def int_value
       Nodes::IntValue.new(pos, expect_token_value(:INT), nil)
     end
 
+    #: () -> Nodes::StringValue
     def string_value
       Nodes::StringValue.new(pos, expect_string_value, nil)
     end
 
+    #: () -> Nodes::BooleanValue
     def boolean_value
       loc = pos
       if at?(:TRUE)
@@ -345,12 +383,14 @@ module TinyGQL
       end
     end
 
+    #: () -> Nodes::NullValue
     def null_value
       loc = pos
       expect_token :NULL
       Nodes::NullValue.new(loc, "null", nil)
     end
 
+    #: () -> Nodes::type_node
     def type
       loc = pos
       type = if at?(:LBRACKET)
@@ -366,6 +406,7 @@ module TinyGQL
       type
     end
 
+    #: () -> Nodes::ListType
     def list_type
       loc = pos
       expect_token(:LBRACKET)
@@ -374,10 +415,12 @@ module TinyGQL
       type
     end
 
+    #: () -> Nodes::NamedType
     def named_type
       Nodes::NamedType.new(pos, name)
     end
 
+    #: () -> Nodes::Variable
     def variable
       loc = pos
       expect_token(:VAR_SIGN)
@@ -386,6 +429,7 @@ module TinyGQL
     end
 
     # The number for variable `name`, the same everywhere in the document
+    #: (String) -> Integer
     def variable_id name
       id = @variable_ids[name]
       unless id
@@ -395,6 +439,7 @@ module TinyGQL
       id
     end
 
+    #: () -> String
     def name
       case token_name
       when :IDENTIFIER, *KEYWORD_TOKENS then expect_token_value(token_name)
@@ -403,6 +448,7 @@ module TinyGQL
       end
     end
 
+    #: () -> bool
     def name?
       case token_name
       when :IDENTIFIER, *KEYWORD_TOKENS then true
@@ -411,10 +457,12 @@ module TinyGQL
       end
     end
 
+    #: () -> (Symbol | false)
     def accept_token
       @token_name = @lexer.advance
     end
 
+    #: (Symbol | false) -> (Symbol | false)
     def expect_token tok
       unless at?(tok)
         raise UnexpectedToken, "Expected token #{tok}, actual: #{token_name} #{@lexer.token_value} line: #{@lexer.line}"
@@ -423,18 +471,21 @@ module TinyGQL
     end
 
     # Only use when we care about the expected token's value
+    #: (Symbol | false) -> String
     def expect_token_value tok
       token_value = @lexer.token_value
       expect_token tok
       token_value
     end
 
+    #: () -> String
     def expect_string_value
       token_value = @lexer.string_value
       expect_token :STRING
       token_value
     end
 
+    #: (Symbol | false) -> bool
     def at? tok
       token_name == tok
     end

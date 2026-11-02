@@ -4,7 +4,7 @@ module TinyGQL
   # The introspection types from the GraphQL spec, like __Schema and __Type.
   # Every schema has them, but schema files don't declare them, so
   # TinyGQL.parse_schema adds them
-  INTROSPECTION = <<~GRAPHQL
+  INTROSPECTION = <<~GRAPHQL #: String
     type __Schema {
       description: String
       types: [__Type!]!

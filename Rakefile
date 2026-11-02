@@ -48,9 +48,15 @@ def extract_nodes source
     end
   end
 
-  field = Struct.new :_name, :type do
+  field = Struct.new :_name, :type, :_rbs do
     def name
       _name.sub(/\?$/, '')
+    end
+
+    # The field's RBS type, optional when the field is nullable
+    def rbs
+      return _rbs unless nullable? && _rbs != "untyped" && !_rbs.end_with?("?")
+      _rbs.include?("|") ? "(#{_rbs})?" : "#{_rbs}?"
     end
 
     def list?; type == "list"; end
@@ -65,10 +71,12 @@ def extract_nodes source
     node.new(n["name"], n["parent"] || "Node", (n["fields"] || []).map { |f|
       name = f
       type = "node"
+      rbs = "untyped"
       if Hash === f
-        (name, type) = *f.to_a.first
+        (name, spec) = *f.to_a.first
+        (type, rbs) = spec.split(" ", 2)
       end
-      field.new name, type
+      field.new name, type, rbs || "untyped"
     })
   }
 end

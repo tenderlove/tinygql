@@ -24,18 +24,39 @@ module TinyGQL
 
     # `cyclic` is true when the document has a fragment cycle, so `value` is
     # the score with cycles cut rather than an exact score
-    Score = Struct.new(:value, :cyclic) do
-      alias_method :cyclic?, :cyclic
+    class Score
+      attr_reader :value #: Integer
+      attr_reader :cyclic #: bool
+
+      #: (Integer, bool) -> void
+      def initialize value, cyclic
+        @value = value
+        @cyclic = cyclic
+      end
+
+      #: () -> bool
+      def cyclic?; cyclic; end
     end
 
     # Returns the Score for `document`, or raises LimitExceeded if it's
     # larger than `limit`
+    #: (Nodes::Document, Integer) -> Score
     def self.check document, limit
       raise ArgumentError, "limit must be a non-negative Integer" unless Integer === limit && limit >= 0
       Scorer.new(document, limit).score
     end
 
     class Scorer # :nodoc:
+      # @rbs @limit: Integer
+      # @rbs @operations: Array[Array[Nodes::selection]]
+      # @rbs @fragments: Array[Nodes::FragmentDefinition]
+      # @rbs @bodies: Hash[String, Array[Array[Nodes::selection]]]
+      # @rbs @states: Hash[String, Integer | :visiting | nil]
+      # @rbs @stack: Array[untyped]
+      # @rbs @score: Integer
+      # @rbs @cycles: Integer
+
+      #: (Nodes::Document, Integer) -> void
       def initialize document, limit
         @limit = limit
         @operations = []
@@ -57,6 +78,7 @@ module TinyGQL
         @cycles = 0
       end
 
+      #: () -> Score
       def score
         @operations.each { |body| run body }
         @fragments.each do |fragment|
@@ -77,6 +99,7 @@ module TinyGQL
       # Selection sets are Arrays and fragment spreads are Strings.  :finish
       # is pushed on top of the fragment name and the counters from when its
       # expansion started.
+      #: (Array[Nodes::selection]) -> void
       def run task
         stack = @stack
         stack.push task
@@ -120,11 +143,13 @@ module TinyGQL
         end
       end
 
+      #: (Integer) -> void
       def add n
         @score += n
         limit_exceeded! if @score > @limit
       end
 
+      #: () -> bot
       def limit_exceeded!
         raise LimitExceeded, "Maximum expansion limit of #{@limit} exceeded"
       end

@@ -13,10 +13,16 @@ module TinyGQL
   #   require_relative "my_parser"
   #   MyParser.parse "{ user(id: 1) { name } }"
   class Generator
-    NON_NULL_STRING = Nodes::NotNullType.new(0, Nodes::NamedType.new(0, "String"))
-    TYPENAME = Schema::Field.new("__typename", [], NON_NULL_STRING)
-    SCHEMA_FIELD = Schema::Field.new("__schema", [], Nodes::NotNullType.new(0, Nodes::NamedType.new(0, "__Schema")))
-    TYPE_FIELD = Schema::Field.new("__type", [Schema::InputValue.new("name", NON_NULL_STRING, nil)], Nodes::NamedType.new(0, "__Type"))
+    # @rbs @body: String?
+    # @rbs @argument_methods: Array[[String, Schema::Type, Schema::Field]]
+    # @rbs @value_methods: Hash[String, [String, Nodes::type_node]]
+    # @rbs @object_methods: Hash[String, [String, Schema::Type]]
+    # @rbs @object_bits: Hash[String, Integer]?
+
+    NON_NULL_STRING = Nodes::NotNullType.new(0, Nodes::NamedType.new(0, "String")) #: Nodes::NotNullType
+    TYPENAME = Schema::Field.new("__typename", [], NON_NULL_STRING) #: Schema::Field
+    SCHEMA_FIELD = Schema::Field.new("__schema", [], Nodes::NotNullType.new(0, Nodes::NamedType.new(0, "__Schema"))) #: Schema::Field
+    TYPE_FIELD = Schema::Field.new("__type", [Schema::InputValue.new("name", NON_NULL_STRING, nil)], Nodes::NamedType.new(0, "__Type")) #: Schema::Field
 
     # The tokens each built in scalar accepts, and the nodes they become
     BUILTIN_LITERALS = Ractor.make_shareable({
@@ -25,13 +31,14 @@ module TinyGQL
       "String" => [[[:STRING], "StringValue"]],
       "Boolean" => [[[:TRUE, :FALSE], "BooleanValue"]],
       "ID" => [[[:STRING], "StringValue"], [[:INT], "IntValue"]],
-    })
+    }) #: Hash[String, Array[[Array[Symbol], String]]]
 
-    TEMPLATE = File.join(__dir__, "generated_parser.erb")
+    TEMPLATE = File.join(__dir__, "generated_parser.erb") #: String
 
-    attr_reader :schema
+    attr_reader :schema #: Schema
 
     # `document` is a schema AST from TinyGQL.parse_schema
+    #: (Nodes::Document) -> void
     def initialize document
       @schema = Schema.new(document)
       unless @schema["__Schema"]
@@ -40,6 +47,7 @@ module TinyGQL
     end
 
     # Ruby source for a file defining `class_name` as a parser for this schema
+    #: (String) -> String
     def generate class_name
       <<~RUBY
         # frozen_string_literal: true
@@ -55,6 +63,7 @@ module TinyGQL
     end
 
     # An anonymous parser class for this schema
+    #: () -> singleton(ValidatingParser)
     def parser_class
       klass = Class.new(ValidatingParser)
       klass.class_eval "# frozen_string_literal: true\n#{body}", "(generated parser)"
@@ -62,6 +71,7 @@ module TinyGQL
     end
 
     # The body of the generated parser class
+    #: () -> String
     def body
       @body ||= begin
         @argument_methods = []
@@ -73,45 +83,54 @@ module TinyGQL
 
     private
 
+    #: () -> Array[Schema::Type]
     def composite_types
       schema.types.each_value.select(&:composite?)
     end
 
     # Fields that can be selected on `type`, including meta fields
+    #: (Schema::Type) -> Array[Schema::Field]
     def selectable_fields type
       fields = type.fields.values + [TYPENAME]
       fields += [SCHEMA_FIELD, TYPE_FIELD] if type.name == schema.roots["query"]
       fields
     end
 
+    #: () -> Array[Schema::Type]
     def abstract_types
       composite_types.reject { |t| t.kind == :object }
     end
 
     # Bit positions for object types that are possible types of some
     # interface or union
+    #: () -> Hash[String, Integer]
     def object_bits
       @object_bits ||= abstract_types.flat_map { |t| schema.possible_types(t.name) }
         .uniq.each_with_index.to_h
     end
 
+    #: (String) -> String
     def possible_types_bitmap type_name
       bitmap = schema.possible_types(type_name).sum(0) { |name| 1 << object_bits.fetch(name) }
       "0x#{bitmap.to_s(16)}"
     end
 
+    #: (String) -> bool
     def composite? type_name
       schema[type_name].composite?
     end
 
+    #: (String) -> String
     def selection_set_method type_name
       "selection_set_for_#{type_name}"
     end
 
+    #: (String) -> String
     def field_method type_name
       "field_for_#{type_name}"
     end
 
+    #: (String) -> String
     def fields_constant type_name
       "FIELDS_FOR_#{type_name}"
     end
@@ -119,6 +138,7 @@ module TinyGQL
     # Registers an argument parsing method for `field` and returns its name.
     # Methods are numbered because type and field names joined together
     # could collide.
+    #: (Schema::Type, Schema::Field) -> String
     def argument_method type, field
       name = "arguments_#{@argument_methods.length}"
       @argument_methods << [name, type, field]
@@ -129,6 +149,7 @@ module TinyGQL
     # returns its name.  Each distinct type, like "[ID!]", gets one method.
     # Wrapped types and input object fields are registered too, so every
     # method exists before the template renders them.
+    #: (Nodes::type_node) -> String
     def value_method type
       key = Schema.type_string(type)
       return @value_methods[key].first if @value_methods.key?(key)
@@ -148,6 +169,7 @@ module TinyGQL
     # `const` is Ruby code for whether variables are disallowed.  A nullable
     # variable may be used for a non-null input with a default, so those
     # check variables against the nullable type
+    #: (Schema::InputValue, String) -> String
     def input_value input, const
       method = value_method input.type
       if input.type.not_null_type? && input.default_value
@@ -159,11 +181,13 @@ module TinyGQL
 
     # The constant holding the type node for value method of `type`.
     # Variable usages are checked against it
+    #: (Nodes::type_node) -> String
     def type_constant type
       "TYPE_#{value_method(type).delete_prefix("value_")}"
     end
 
     # Ruby code that builds a node for `type`
+    #: (Nodes::type_node) -> String
     def type_node type
       if type.not_null_type?
         "TinyGQL::Nodes::NotNullType.new(0, #{type_node type.type})"
@@ -175,22 +199,26 @@ module TinyGQL
     end
 
     # Registers a method that parses object values of input type `name`
+    #: (String) -> String
     def object_method name
       @object_methods[name] ||= ["object_value_for_#{name}", schema[name]]
       @object_methods[name].first
     end
 
     # Enum types that value methods check
+    #: () -> Array[Schema::Type]
     def input_enums
       @value_methods.each_value.filter_map { |_, type|
         type.named_type? && schema[type.name].kind == :enum ? schema[type.name] : nil
       }
     end
 
+    #: (String) -> String
     def coerce_object_method type_name
       "coerce_object_#{type_name}"
     end
 
+    #: (String) -> String
     def literal_object_method type_name
       "literal_object_#{type_name}"
     end
@@ -203,11 +231,12 @@ module TinyGQL
       Nodes::EnumValue => :ENUM,
       Nodes::ListValue => :LIST,
       Nodes::ObjectValue => :OBJECT,
-    }.freeze
+    }.freeze #: Hash[singleton(Nodes::Node), Symbol]
 
     # Ruby code for the value of a schema default, `node` of `type`.  The
     # schema's literals weren't coerced when it was parsed, so this calls
     # the scalars each time a default is used
+    #: (Nodes::type_node, Nodes::value_node, ?Array[String]) -> String
     def default_code type, node, seen = []
       return "nil" if node.null_value?
 
@@ -246,6 +275,7 @@ module TinyGQL
     end
 
     # Ruby code that builds value node `node`, for custom scalar defaults
+    #: (Nodes::value_node) -> String
     def node_code node
       case node
       when Nodes::ListValue
@@ -258,23 +288,28 @@ module TinyGQL
       end
     end
 
+    #: () -> Array[Schema::Type]
     def input_objects
       input_types.select { |t| t.kind == :input }
     end
 
     # Types that variables can be declared with
+    #: () -> Array[Schema::Type]
     def input_types
       schema.types.each_value.select(&:input?)
     end
 
+    #: (String) -> String
     def enum_constant type_name
       "ENUM_VALUES_#{type_name}"
     end
 
+    #: () -> Array[Schema::Type]
     def custom_scalars
       schema.types.each_value.select { |t| t.kind == :scalar && !Schema::BUILTIN_SCALARS.include?(t.name) }
     end
 
+    #: (String) -> String
     def lit str
       str.dump
     end
