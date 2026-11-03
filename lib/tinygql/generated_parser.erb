@@ -350,6 +350,11 @@ class Scalars < TinyGQL::Scalars
   def coerce_value_<%= scalar.name %> value
     raise NotImplementedError, "#{self.class}#coerce_value_<%= scalar.name %> is not implemented"
   end
+
+  #: (untyped) -> untyped
+  def coerce_result_<%= scalar.name %> value
+    raise NotImplementedError, "#{self.class}#coerce_result_<%= scalar.name %> is not implemented"
+  end
 <%- end -%>
 end
 <%- else -%>

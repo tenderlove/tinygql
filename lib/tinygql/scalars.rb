@@ -22,6 +22,9 @@ module TinyGQL
   # coerce_value_X gets the decoded JSON value: a String, Integer, Float,
   # true, false, Array, or Hash.  Nulls are handled before it's called.
   #
+  # coerce_result_X gets a value to put in a response, and returns its
+  # JSON value.  Nulls are handled before it's called.
+  #
   # This class implements the built in scalars as the GraphQL spec describes
   # them.  Generated parsers define a subclass, `MyParser::Scalars`, whose
   # methods for the schema's custom scalars raise NotImplementedError.
@@ -136,6 +139,58 @@ module TinyGQL
 
     #: (untyped) -> String
     def coerce_value_ID value
+      if value.is_a?(String)
+        value
+      elsif value.is_a?(Integer)
+        value.to_s
+      else
+        raise InvalidValue, "ID cannot represent value: #{value.inspect}"
+      end
+    end
+
+    #: (untyped) -> Integer
+    def coerce_result_Int value
+      if value.is_a?(Float) && value.finite? && value == value.floor
+        value = value.to_i
+      end
+      unless value.is_a?(Integer)
+        raise InvalidValue, "Int cannot represent non-integer value: #{value.inspect}"
+      end
+      unless INT_RANGE.cover?(value)
+        raise InvalidValue, "Int cannot represent non 32-bit signed integer value: #{value}"
+      end
+      value
+    end
+
+    #: (untyped) -> Float
+    def coerce_result_Float value
+      unless value.is_a?(Integer) || (value.is_a?(Float) && value.finite?)
+        raise InvalidValue, "Float cannot represent non numeric value: #{value.inspect}"
+      end
+      value.to_f
+    end
+
+    #: (untyped) -> String
+    def coerce_result_String value
+      if value.is_a?(String)
+        value
+      elsif value.is_a?(Symbol) || value.is_a?(Integer) || value.is_a?(Float) || true == value || false == value
+        value.to_s
+      else
+        raise InvalidValue, "String cannot represent value: #{value.inspect}"
+      end
+    end
+
+    #: (untyped) -> bool
+    def coerce_result_Boolean value
+      unless true == value || false == value
+        raise InvalidValue, "Boolean cannot represent a non boolean value: #{value.inspect}"
+      end
+      value
+    end
+
+    #: (untyped) -> String
+    def coerce_result_ID value
       if value.is_a?(String)
         value
       elsif value.is_a?(Integer)
