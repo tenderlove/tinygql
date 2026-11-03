@@ -22,8 +22,9 @@ module TinyGQL
   # coerce_value_X gets the decoded JSON value: a String, Integer, Float,
   # true, false, Array, or Hash.  Nulls are handled before it's called.
   #
-  # coerce_result_X gets a value to put in a response, and returns its
-  # JSON value.  Nulls are handled before it's called.
+  # `MyParser.execute` calls coerce_result_X for each non-null value a
+  # resolver returns for a field of scalar type X, and puts what it returns
+  # in the response.
   #
   # This class implements the built in scalars as the GraphQL spec describes
   # them.  Generated parsers define a subclass, `MyParser::Scalars`, whose

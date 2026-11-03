@@ -1,0 +1,200 @@
+
+# Output types, mapped to branches in Executor#complete_named
+OUTPUT_TYPES = {
+<%- output_types.each_with_index do |type, i| -%>
+  <%= lit type.name %> => <%= i %>,
+<%- end -%>
+}.freeze #: Hash[String, Integer]
+<%- output_enums.each do |enum| -%>
+
+<%= enum_constant enum.name %> = {
+<%- enum.values.each do |value| -%>
+  <%= lit value %> => true,
+<%- end -%>
+}.freeze #: Hash[String, true]
+<%- end -%>
+<%- object_types.each do |type| -%>
+
+<%= execute_fields_constant type.name %> = {
+<%- selectable_fields(type).each_with_index do |field, i| -%>
+  <%= lit field.name %> => <%= i %>,
+<%- end -%>
+}.freeze #: Hash[String, Integer]
+<%- end -%>
+
+<%- arguments_fields = object_types.flat_map { |type| type.fields.each_value.filter_map { |field| [type, field] unless field.arguments.empty? } } -%>
+<%- unless arguments_fields.empty? -%>
+
+# Field arguments, frozen, with a reader for each argument.  Missing
+# arguments without defaults are nil
+module Arguments
+<%- arguments_fields.each_with_index do |(type, field), i| -%>
+<%- if i > 0 -%>
+
+<%- end -%>
+<%= value_class resolver_method(type.name, field.name), field.arguments, "  " %>
+<%- end -%>
+end
+<%- end -%>
+
+# Resolves fields.  Each object type field has a method that calls the
+# field's name on the object, and each interface and union has a method
+# that raises NotImplementedError.  Subclass this and pass an instance to
+# `execute` with `resolvers:`
+class Resolvers
+<%- resolver_count = 0 -%>
+<%- object_types.each do |type| -%>
+<%- type.fields.each_value do |field| -%>
+<%- if (resolver_count += 1) > 1 -%>
+
+<%- end -%>
+  #: (untyped, <%= field.arguments.empty? ? "nil" : arguments_class(type.name, field.name) %>, untyped) -> untyped
+  def <%= resolver_method type.name, field.name %> obj, args, context
+    obj.<%= field.name %>
+  end
+<%- end -%>
+<%- end -%>
+<%- abstract_types.each do |type| -%>
+
+  # The name of the object type of `obj`, one of <%= type.name %>'s possible types
+  #: (untyped, untyped) -> String
+  def resolve_type_<%= type.name %> obj, context
+    raise NotImplementedError, "#{self.class}#resolve_type_<%= type.name %> is not implemented"
+  end
+<%- end -%>
+end
+
+# Executes operations.  See TinyGQL::Executor
+class Executor < TinyGQL::Executor
+  private
+
+  #: (String?, untyped, Array[TinyGQL::Nodes::OperationDefinition]) -> Hash[String, untyped]
+  def execute_operation type, root, nodes
+    case type
+    when nil, "query" then <%= execute_method schema.roots["query"] %> root, nodes, nil
+<%- if schema.roots["mutation"] -%>
+    when "mutation" then <%= execute_method schema.roots["mutation"] %> root, nodes, nil
+<%- end -%>
+    else
+      raise TinyGQL::Inputs::Error, "#{type} operations aren't supported"
+    end
+  end
+
+  # Whether a fragment on `condition` applies to an object of `type`
+  #: (String, String) -> bool
+  def fragment_applies? condition, type
+    return true if condition == type
+    possible = ABSTRACT_POSSIBLE_TYPES[condition]
+    bit = OBJECT_BITS[type]
+    possible && bit ? possible[bit] == 1 : false
+  end
+
+  #: (String, Array[TinyGQL::Nodes::Field], untyped, path?, String | Integer) -> untyped
+  def complete_named type, nodes, value, path, key
+    case OUTPUT_TYPES[type]
+<%- output_types.each_with_index do |type, i| -%>
+<%- case type.kind -%>
+<%- when :scalar -%>
+    when <%= i %> then @scalars.coerce_result_<%= type.name %>(value)
+<%- when :enum -%>
+    when <%= i %> then complete_enum <%= enum_constant type.name %>, <%= lit type.name %>, value
+<%- when :object -%>
+    when <%= i %> then <%= execute_method type.name %> value, nodes, [path, key]
+<%- else -%>
+    when <%= i %> then execute_abstract <%= lit type.name %>, @resolvers.resolve_type_<%= type.name %>(value, @context), value, nodes, [path, key]
+<%- end -%>
+<%- end -%>
+    end
+  end
+<%- unless abstract_types.empty? -%>
+
+  # Executes an object of `type`, the object type an interface or union
+  # resolved to
+  #: (String, String, untyped, Array[TinyGQL::Nodes::Field], path) -> Hash[String, untyped]
+  def execute_abstract abstract, type, value, nodes, path
+    unless type.is_a?(String) && fragment_applies?(abstract, type)
+      raise TinyGQL::ExecutionError, "Abstract type #{abstract} must resolve to one of its object types, got #{type.inspect}"
+    end
+
+    case OBJECT_BITS[type]
+<%- object_bits.each do |name, i| -%>
+    when <%= i %> then <%= execute_method name %> value, nodes, path
+<%- end -%>
+    else
+      raise TinyGQL::ExecutionError, "Abstract type #{abstract} must resolve to one of its object types, got #{type.inspect}"
+    end
+  end
+<%- end -%>
+<%- object_types.each do |type| -%>
+
+  #: (untyped, Array[TinyGQL::Nodes::Field | TinyGQL::Nodes::OperationDefinition], path?) -> Hash[String, untyped]
+  def <%= execute_method type.name %> obj, nodes, path
+    collected = collect_fields <%= lit type.name %>, nodes
+    result = {}
+    i = 0
+    while i < collected.length
+      key = collected[i]
+      result[key] = <%= execute_field_method type.name %> obj, collected[i + 1], path, key
+      i += 2
+    end
+    result
+  end
+
+  #: (untyped, Array[TinyGQL::Nodes::Field], path?, String) -> untyped
+  def <%= execute_field_method type.name %> obj, nodes, path, key
+    type = nil
+    case <%= execute_fields_constant type.name %>[nodes[0].name]
+<%- selectable_fields(type).each_with_index do |field, i| -%>
+    when <%= i %> # <%= field.name %>
+<%- if field.name == "__typename" -%>
+      <%= lit type.name %>
+<%- elsif field.name.start_with?("__") -%>
+      type = <%= result_type_constant field.type %>
+      raise TinyGQL::ExecutionError, "Introspection isn't supported yet"
+<%- else -%>
+      type = <%= result_type_constant field.type %>
+      value = @resolvers.<%= resolver_method type.name, field.name %>(obj, <%= field.arguments.empty? ? "nil" : "#{field_arguments_method type, field}(nodes[0])" %>, @context)
+      complete_value type, nodes, value, path, key
+<%- end -%>
+<%- end -%>
+    end
+  rescue TinyGQL::ExecutionError, TinyGQL::Scalars::InvalidValue => e
+    field_error e, type, path, key
+  end
+<%- end -%>
+<%- @field_arguments.each do |field, (method, type)| -%>
+<%- arguments = field.arguments -%>
+
+  #: (TinyGQL::Nodes::Field) -> <%= arguments_class type.name, field.name %>
+  def <%= method %> field
+<%- arguments.each_index do |i| -%>
+    f<%= i %> = TinyGQL::Inputs::UNDEFINED
+<%- end -%>
+    nodes = field.arguments
+    if nodes
+      i = 0
+      while i < nodes.length
+        node = nodes[i]
+        name = node.name
+        case name
+<%- arguments.each_with_index do |arg, i| -%>
+        when <%= lit arg.name %> then f<%= i %> = argument_value name, <%= type_constant arg.type %>, node.value
+<%- end -%>
+        end
+        i += 1
+      end
+    end
+    # Arguments whose variables are missing get their defaults
+<%- arguments.each_with_index do |arg, i| -%>
+    f<%= i %> = <%= arg.default_value ? default_code(arg.type, arg.default_value) : "nil" %> if TinyGQL::Inputs::UNDEFINED.equal?(f<%= i %>)
+<%- end -%>
+    <%= arguments_class type.name, field.name %>.new(<%= arguments.each_index.map { "f#{_1}" }.join(", ") %>)
+  end
+<%- end -%>
+<%- unless @result_types.empty? -%>
+
+<%- end -%>
+<%- @result_types.each_value do |constant, type| -%>
+  <%= constant %> = <%= type_node type %> #: <%= type.class.name %>
+<%- end -%>
+end

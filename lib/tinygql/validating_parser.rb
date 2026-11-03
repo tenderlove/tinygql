@@ -3,6 +3,7 @@
 require "tinygql/executable_parser"
 require "tinygql/scalars"
 require "tinygql/inputs"
+require "tinygql/executor"
 require "set"
 
 module TinyGQL
@@ -72,6 +73,14 @@ module TinyGQL
     #: (Nodes::Document, untyped, ?op: String?, ?scalars: Scalars) -> Array[untyped]
     def self.coerce doc, variables, op: nil, scalars: self::Scalars.new
       self::Inputs.new(scalars).coerce(doc, variables, op)
+    end
+
+    # Executes operation `op` in `doc`, a document this parser parsed, and
+    # returns the response.  `variables` come from `coerce`, and `root` is
+    # the object of the operation's root type.  See TinyGQL::Executor
+    #: (Nodes::Document, Array[untyped], resolvers: untyped, ?op: String?, ?root: untyped, ?context: untyped, ?scalars: Scalars) -> Hash[String, untyped]
+    def self.execute doc, variables, resolvers:, op: nil, root: nil, context: nil, scalars: self::Scalars.new
+      self::Executor.new(resolvers, scalars, self::Inputs.new(scalars), variables, context).execute(doc, op, root)
     end
 
     #: (String, ?scalars: Scalars) -> void

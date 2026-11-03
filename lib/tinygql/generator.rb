@@ -18,6 +18,8 @@ module TinyGQL
     # @rbs @value_methods: Hash[String, [String, Nodes::NamedType | Nodes::ListType | Nodes::NotNullType]]
     # @rbs @object_methods: Hash[String, [String, Schema::Type]]
     # @rbs @object_bits: Hash[String, Integer]?
+    # @rbs @result_types: Hash[String, [String, Nodes::NamedType | Nodes::ListType | Nodes::NotNullType]]
+    # @rbs @field_arguments: Hash[Schema::Field, [String, Schema::Type]]
 
     NON_NULL_STRING = Nodes::NotNullType.new(0, Nodes::NamedType.new(0, "String")) #: Nodes::NotNullType
     TYPENAME = Schema::Field.new("__typename", [], NON_NULL_STRING) #: Schema::Field
@@ -34,6 +36,7 @@ module TinyGQL
     }) #: Hash[String, Array[[Array[Symbol], String]]]
 
     TEMPLATE = File.join(__dir__, "generated_parser.erb") #: String
+    EXECUTOR_TEMPLATE = File.join(__dir__, "generated_executor.erb") #: String
 
     attr_reader :schema #: Schema
 
@@ -77,8 +80,16 @@ module TinyGQL
         @argument_methods = []
         @value_methods = {}
         @object_methods = {}
+        @result_types = {}
+        @field_arguments = {}.compare_by_identity
+        check_resolver_methods
         check_value_class_names
-        ERB.new(File.read(TEMPLATE), trim_mode: "-").result(binding)
+        parser = ERB.new(File.read(TEMPLATE), trim_mode: "-").result(binding)
+        value_methods = @value_methods.length
+        executor = ERB.new(File.read(EXECUTOR_TEMPLATE), trim_mode: "-").result(binding)
+        # The parser template defines the TYPE_ constants the executor uses
+        raise "executor added value methods" unless value_methods == @value_methods.length
+        parser + executor
       end
     end
 
@@ -305,18 +316,85 @@ module TinyGQL
       "ENUM_VALUES_#{type_name}"
     end
 
+    # Types that fields can return.  Introspection types are left out, as
+    # introspection isn't supported yet
+    #: () -> Array[Schema::Type]
+    def output_types
+      schema.types.each_value.select { |t| !t.name.start_with?("__") && (t.composite? || t.kind == :scalar || t.kind == :enum) }
+    end
+
+    #: () -> Array[Schema::Type]
+    def object_types
+      output_types.select { |t| t.kind == :object }
+    end
+
+    # Enums that only fields return, whose ENUM_VALUES_ constants the
+    # parser template didn't define
+    #: () -> Array[Schema::Type]
+    def output_enums
+      output_types.select { |t| t.kind == :enum } - input_enums
+    end
+
+    #: (String) -> String
+    def execute_method type_name
+      "execute_#{type_name}"
+    end
+
+    #: (String) -> String
+    def execute_field_method type_name
+      "execute_field_#{type_name}"
+    end
+
+    #: (String) -> String
+    def execute_fields_constant type_name
+      "EXECUTE_FIELDS_#{type_name}"
+    end
+
+    #: (String, String) -> String
+    def resolver_method type_name, field_name
+      "#{type_name}_#{field_name}"
+    end
+
+    # Resolver methods join type and field names, so `A_b.c` and `A.b_c`
+    # would both be `A_b_c`
+    #: () -> void
+    def check_resolver_methods
+      seen = {}
+      abstract_types.each { |type| seen["resolve_type_#{type.name}"] = type.name }
+      object_types.each do |type|
+        type.fields.each_value do |field|
+          name = resolver_method(type.name, field.name)
+          if seen.key?(name)
+            raise Schema::Error, "Resolver method #{name} for #{type.name}.#{field.name} collides with #{seen[name]}"
+          end
+          seen[name] = "#{type.name}.#{field.name}"
+        end
+      end
+    end
+
     # The class that values of input object type `type_name` become
     #: (String) -> String
     def input_class type_name
       "InputObjects::#{type_name}"
     end
 
-    # Input objects become classes with a reader for each field, so their
-    # names must be constants, and field names can't replace the methods
-    # every object has
+    # The class that the arguments of `type_name`.`field_name` become
+    #: (String, String) -> String
+    def arguments_class type_name, field_name
+      "Arguments::#{resolver_method type_name, field_name}"
+    end
+
+    # Input objects and arguments become classes with a reader for each
+    # field, so their names must be constants, and field names can't
+    # replace the methods every object has
     #: () -> void
     def check_value_class_names
       classes = input_objects.map { [_1.name, _1.fields.values] }
+      object_types.each do |type|
+        type.fields.each_value do |field|
+          classes << ["#{type.name}.#{field.name}", field.arguments] unless field.arguments.empty?
+        end
+      end
       classes.each do |name, inputs|
         unless name.match?(/\A[A-Z]/)
           raise Schema::Error, "#{name} must start with an uppercase letter to be a Ruby class"
@@ -369,6 +447,21 @@ module TinyGQL
         end
       end
       nullable ? "#{rbs}?" : rbs
+    end
+
+    # Registers a constant holding the type node of a field's type, which
+    # results are completed with, and returns its name
+    #: (Nodes::NamedType | Nodes::ListType | Nodes::NotNullType) -> String
+    def result_type_constant type
+      key = Schema.type_string(type)
+      @result_types[key] ||= ["RESULT_TYPE_#{@result_types.length}", type]
+      @result_types[key].first
+    end
+
+    # Registers a method that builds the arguments of `type`.`field`
+    #: (Schema::Type, Schema::Field) -> String
+    def field_arguments_method type, field
+      (@field_arguments[field] ||= ["field_arguments_#{@field_arguments.length}", type]).first
     end
 
     #: () -> Array[Schema::Type]

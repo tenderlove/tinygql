@@ -125,8 +125,6 @@ module TinyGQL
       end
     end
 
-    private
-
     # Finds the operation a request runs.  Parsed documents have unique
     # operation names, and only one operation if it's anonymous
     #: (Nodes::Document, String?) -> Nodes::OperationDefinition
@@ -149,6 +147,8 @@ module TinyGQL
       raise Error, "Unknown operation #{op}" if op || found.nil?
       found
     end
+
+    private
 
     #: (Nodes::NamedType | Nodes::ListType | Nodes::NotNullType, Array[untyped]) -> Array[untyped]
     def coerce_list type, values

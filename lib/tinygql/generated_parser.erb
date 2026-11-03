@@ -335,7 +335,8 @@ end
 
 # Coerces the schema's scalars.  Built in scalars follow the GraphQL spec,
 # and custom scalars raise NotImplementedError until you implement them.
-# Subclass this and pass an instance to `parse` and `coerce` with `scalars:`
+# Subclass this and pass an instance to `parse`, `coerce`, and `execute` with
+# `scalars:`
 class Scalars < TinyGQL::Scalars
 <%- custom_scalars.each_with_index do |scalar, i| -%>
 <%- if i > 0 -%>
@@ -360,7 +361,8 @@ end
 <%- else -%>
 
 # Coerces the schema's scalars.  Subclass this and pass an instance to
-# `parse` and `coerce` with `scalars:` to change how they're coerced
+# `parse`, `coerce`, and `execute` with `scalars:` to change how they're
+# coerced
 class Scalars < TinyGQL::Scalars
 end
 <%- end -%>
