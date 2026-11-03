@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "tinygql/inputs"
+require "tinygql/loader"
 
 module TinyGQL
   # A field error.  Resolvers raise this to make a field null and report an
@@ -34,11 +35,20 @@ module TinyGQL
   # the field is null and the error is added to the response's "errors".
   # Nulls in non-null fields make their parent null instead, up to the
   # nearest field that can be null.
+  #
+  # Resolvers can return a Lazy from a Loader instead of a value.  Lazies
+  # are queued, and once the rest of the response is done the queue is
+  # drained: each Lazy's value is completed where the Lazy was, which can
+  # queue more Lazies.  Each depth of the response loads in one batch.  The
+  # fields of a mutation drain the queue one at a time, so they run in order.
   class Executor
     # The position of an object or list in the response, as a linked list.
-    # Each node has the parent's position and the key the value is at
+    # Each node has the parent's position, the key the value is at, the
+    # Hash or Array it's in, and whether it can be null.  Lazies completed
+    # after the rest of the response use it to make the nearest nullable
+    # position null
     # @rbs!
-    #   type path = [path?, String | Integer]
+    #   type path = [path?, String | Integer, Hash[String, untyped] | Array[untyped], bool]
 
     # @rbs @resolvers: untyped
     # @rbs @scalars: Scalars
@@ -48,6 +58,7 @@ module TinyGQL
     # @rbs @errors: Array[ExecutionError]
     # @rbs @fragments: Hash[String, Nodes::FragmentDefinition]
     # @rbs @collected: Hash[Array[Nodes::Field | Nodes::OperationDefinition], Hash[String, Array[untyped]]]
+    # @rbs @lazies: Array[untyped]
 
     #: (untyped, Scalars, Inputs, Array[untyped], untyped) -> void
     def initialize resolvers, scalars, inputs, variables, context
@@ -62,6 +73,9 @@ module TinyGQL
       # Lists of field nodes come from earlier collections, so the fields of
       # a list of objects are only collected once
       @collected = {}.compare_by_identity
+      # Lazies waiting to be completed, six entries each: the type, field
+      # nodes, Lazy, path, key, and the Hash or Array the value goes in
+      @lazies = []
     end
 
     # Executes operation `op` in `doc` and returns the response, a Hash
@@ -79,7 +93,9 @@ module TinyGQL
       end
 
       data = begin
-        execute_operation(operation.type, root, [operation].freeze)
+        data = execute_operation(operation.type, root, [operation].freeze)
+        drain
+        data
       rescue ExecutionError => e
         # A non-null root field was null
         @errors << e
@@ -196,11 +212,15 @@ module TinyGQL
     end
 
     # Completes the value a resolver returned for a field of `type`.  The
-    # value goes at `key` under `path`
-    #: (Nodes::NamedType | Nodes::ListType | Nodes::NotNullType, Array[Nodes::Field], untyped, path?, String | Integer) -> untyped
-    def complete_value type, nodes, value, path, key
-      if type.not_null_type?
-        value = complete_present(type.type, nodes, value, path, key) unless value.nil?
+    # value goes at `key` in `container`, the Hash or Array at `path`.
+    # Lazies are queued, and nil holds their place
+    #: (Nodes::NamedType | Nodes::ListType | Nodes::NotNullType, Array[Nodes::Field], untyped, path?, String | Integer, Hash[String, untyped] | Array[untyped]) -> untyped
+    def complete_value type, nodes, value, path, key, container
+      if value.is_a?(Lazy)
+        @lazies << type << nodes << value << path << key << container
+        nil
+      elsif type.not_null_type?
+        value = complete_present(type.type, nodes, value, path, key, container, false) unless value.nil?
         if value.nil?
           raise ExecutionError, "Cannot return null for non-nullable field #{nodes[0].parent_type}.#{nodes[0].name}"
         end
@@ -208,20 +228,20 @@ module TinyGQL
       elsif value.nil?
         nil
       else
-        complete_present type, nodes, value, path, key
+        complete_present type, nodes, value, path, key, container, true
       end
     end
 
     # Completes a value that isn't nil, of a named or list type
-    #: (Nodes::NamedType | Nodes::ListType | Nodes::NotNullType, Array[Nodes::Field], untyped, path?, String | Integer) -> untyped
-    def complete_present type, nodes, value, path, key
+    #: (Nodes::NamedType | Nodes::ListType | Nodes::NotNullType, Array[Nodes::Field], untyped, path?, String | Integer, Hash[String, untyped] | Array[untyped], bool) -> untyped
+    def complete_present type, nodes, value, path, key, container, nullable
       if type.list_type?
         unless value.is_a?(Array)
           raise ExecutionError, "Expected a list for field #{nodes[0].parent_type}.#{nodes[0].name}, got #{value.class}"
         end
-        complete_list type.type, nodes, value, [path, key]
+        complete_list type.type, nodes, value, [path, key, container, nullable]
       else
-        complete_named type.name, nodes, value, path, key
+        complete_named type.name, nodes, value, path, key, container, nullable
       end
     end
 
@@ -231,13 +251,60 @@ module TinyGQL
       i = 0
       while i < values.length
         begin
-          list[i] = complete_value(type, nodes, values[i], path, i)
+          list[i] = complete_value(type, nodes, values[i], path, i, list)
         rescue ExecutionError, Scalars::InvalidValue => e
           list[i] = field_error(e, type, path, i)
         end
         i += 1
       end
       list
+    end
+
+    # Completes queued Lazies until there are none.  Completing a Lazy's
+    # value can queue more, which wait for the next round, so each round
+    # loads one batch per Loader
+    #: () -> void
+    def drain
+      until @lazies.empty?
+        lazies = @lazies
+        @lazies = []
+        i = 0
+        while i < lazies.length
+          type = lazies[i]
+          nodes = lazies[i + 1]
+          path = lazies[i + 3]
+          key = lazies[i + 4]
+          container = lazies[i + 5]
+          begin
+            container[key] = complete_value(type, nodes, lazies[i + 2].sync, path, key, container)
+          rescue ExecutionError, Scalars::InvalidValue => e
+            lazy_error e, type, path, key, container
+          end
+          i += 6
+        end
+      end
+    end
+
+    # Handles an error for a Lazy's value, like field_error.  The positions
+    # above it are already in the response, so a null in a non-null
+    # position replaces the nearest nullable one.  If there isn't one, the
+    # error goes to `execute` and "data" is null
+    #: (StandardError, Nodes::NamedType | Nodes::ListType | Nodes::NotNullType, path?, String | Integer, Hash[String, untyped] | Array[untyped]) -> void
+    def lazy_error error, type, path, key, container
+      error = execution_error(error, path, key)
+      if type.not_null_type?
+        while path
+          if path[3]
+            path[2][path[1]] = nil
+            @errors << error
+            return
+          end
+          path = path[0]
+        end
+        raise error
+      end
+      container[key] = nil
+      @errors << error
     end
 
     #: (Hash[String, true], String, untyped) -> String

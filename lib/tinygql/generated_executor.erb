@@ -89,8 +89,8 @@ class Executor < TinyGQL::Executor
     possible && bit ? possible[bit] == 1 : false
   end
 
-  #: (String, Array[TinyGQL::Nodes::Field], untyped, path?, String | Integer) -> untyped
-  def complete_named type, nodes, value, path, key
+  #: (String, Array[TinyGQL::Nodes::Field], untyped, path?, String | Integer, Hash[String, untyped] | Array[untyped], bool) -> untyped
+  def complete_named type, nodes, value, path, key, container, nullable
     case OUTPUT_TYPES[type]
 <%- output_types.each_with_index do |type, i| -%>
 <%- case type.kind -%>
@@ -99,9 +99,9 @@ class Executor < TinyGQL::Executor
 <%- when :enum -%>
     when <%= i %> then complete_enum <%= enum_constant type.name %>, <%= lit type.name %>, value
 <%- when :object -%>
-    when <%= i %> then <%= execute_method type.name %> value, nodes, [path, key]
+    when <%= i %> then <%= execute_method type.name %> value, nodes, [path, key, container, nullable]
 <%- else -%>
-    when <%= i %> then execute_abstract <%= lit type.name %>, @resolvers.resolve_type_<%= type.name %>(value, @context), value, nodes, [path, key]
+    when <%= i %> then execute_abstract <%= lit type.name %>, @resolvers.resolve_type_<%= type.name %>(value, @context), value, nodes, [path, key, container, nullable]
 <%- end -%>
 <%- end -%>
     end
@@ -134,14 +134,18 @@ class Executor < TinyGQL::Executor
     i = 0
     while i < collected.length
       key = collected[i]
-      result[key] = <%= execute_field_method type.name %> obj, collected[i + 1], path, key
+      result[key] = <%= execute_field_method type.name %> obj, collected[i + 1], path, key, result
+<%- if type.name == schema.roots["mutation"] -%>
+      # Mutation fields run one at a time, Lazies and all
+      drain
+<%- end -%>
       i += 2
     end
     result
   end
 
-  #: (untyped, Array[TinyGQL::Nodes::Field], path?, String) -> untyped
-  def <%= execute_field_method type.name %> obj, nodes, path, key
+  #: (untyped, Array[TinyGQL::Nodes::Field], path?, String, Hash[String, untyped]) -> untyped
+  def <%= execute_field_method type.name %> obj, nodes, path, key, result
     type = nil
     case <%= execute_fields_constant type.name %>[nodes[0].name]
 <%- selectable_fields(type).each_with_index do |field, i| -%>
@@ -154,7 +158,7 @@ class Executor < TinyGQL::Executor
 <%- else -%>
       type = <%= result_type_constant field.type %>
       value = @resolvers.<%= resolver_method type.name, field.name %>(obj, <%= field.arguments.empty? ? "nil" : "#{field_arguments_method type, field}(nodes[0])" %>, @context)
-      complete_value type, nodes, value, path, key
+      complete_value type, nodes, value, path, key, result
 <%- end -%>
 <%- end -%>
     end
