@@ -9,10 +9,12 @@ module TinyGQL
   # `MyParser.coerce`.
   #
   # Values become Ruby values.  Scalars are coerced with the Scalars
-  # methods, enums become their names, input objects become frozen Hashes
-  # with String keys, and lists become frozen Arrays.  A single value where
-  # a list is expected becomes a list of one.  Input object fields that are
-  # missing get their default, or are left out when they don't have one.
+  # methods, enums become their names, input objects become instances of
+  # the generated classes in `MyParser::InputObjects`, which are frozen and
+  # have a reader for each field, and lists become frozen Arrays.  A single
+  # value where a list is expected becomes a list of one.  Input object
+  # fields that are missing get their default, or nil when they don't have
+  # one.
   class Inputs
     # @rbs @scalars: Scalars
 

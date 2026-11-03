@@ -77,6 +77,7 @@ module TinyGQL
         @argument_methods = []
         @value_methods = {}
         @object_methods = {}
+        check_value_class_names
         ERB.new(File.read(TEMPLATE), trim_mode: "-").result(binding)
       end
     end
@@ -265,11 +266,11 @@ module TinyGQL
             raise Schema::Error, "Default value of #{named.name} refers to itself"
           end
           given = node.values.to_h { [_1.name, _1.value] }
-          pairs = named.fields.each_value.filter_map do |field|
+          values = named.fields.each_value.map do |field|
             value = given.fetch(field.name) { field.default_value }
-            "#{lit field.name} => #{default_code(field.type, value, seen + [named.name])}" if value
+            value ? default_code(field.type, value, seen + [named.name]) : "nil"
           end
-          "{ #{pairs.join(", ")} }.freeze"
+          "#{input_class named.name}.new(#{values.join(", ")})"
         end
       end
     end
@@ -302,6 +303,72 @@ module TinyGQL
     #: (String) -> String
     def enum_constant type_name
       "ENUM_VALUES_#{type_name}"
+    end
+
+    # The class that values of input object type `type_name` become
+    #: (String) -> String
+    def input_class type_name
+      "InputObjects::#{type_name}"
+    end
+
+    # Input objects become classes with a reader for each field, so their
+    # names must be constants, and field names can't replace the methods
+    # every object has
+    #: () -> void
+    def check_value_class_names
+      classes = input_objects.map { [_1.name, _1.fields.values] }
+      classes.each do |name, inputs|
+        unless name.match?(/\A[A-Z]/)
+          raise Schema::Error, "#{name} must start with an uppercase letter to be a Ruby class"
+        end
+        inputs.each do |input|
+          if Object.method_defined?(input.name)
+            raise Schema::Error, "#{name}.#{input.name} can't be a reader, it would replace Object##{input.name}"
+          end
+        end
+      end
+    end
+
+    # Ruby code for a frozen class with a reader for each of `inputs`,
+    # indented by `indent`.  The initializer takes the values positionally,
+    # since field names like `in` aren't valid parameter names
+    #: (String, Array[Schema::InputValue], String) -> String
+    def value_class name, inputs, indent
+      params = inputs.each_index.map { "f#{_1}" }
+      lines = ["class #{name}"]
+      inputs.each { |input| lines << "  attr_reader :#{input.name} #: #{rbs_type input.type}" }
+      lines << ""
+      lines << "  #: (#{inputs.map { rbs_type _1.type }.join(", ")}) -> void"
+      lines << "  def initialize #{params.join(", ")}"
+      inputs.each_with_index { |input, i| lines << "    @#{input.name} = f#{i}" }
+      lines << "    freeze"
+      lines << "  end"
+      lines << "end"
+      lines.map { _1.empty? ? _1 : indent + _1 }.join("\n")
+    end
+
+    # The RBS type of coerced values of `type`
+    #: (Nodes::NamedType | Nodes::ListType | Nodes::NotNullType, ?bool) -> String
+    def rbs_type type, nullable = true
+      return rbs_type(type.type, false) if type.not_null_type?
+
+      rbs = if type.list_type?
+        "Array[#{rbs_type type.type}]"
+      else
+        case type.name
+        when "Int" then "Integer"
+        when "Float" then "Float"
+        when "String", "ID" then "String"
+        when "Boolean" then "bool"
+        else
+          case schema[type.name].kind
+          when :enum then "String"
+          when :input then input_class(type.name)
+          else return "untyped"
+          end
+        end
+      end
+      nullable ? "#{rbs}?" : rbs
     end
 
     #: () -> Array[Schema::Type]

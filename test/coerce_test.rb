@@ -58,10 +58,14 @@ module TinyGQL
       range = { "from" => 1, "to" => 100 }
       assert_equal({
         "status" => "DRAFT",
+        "after" => nil,
         "tags" => ["a"],
-        "and" => [{ "status" => "PUBLISHED", "after" => "value 2026", "range" => range }],
+        "and" => [{ "status" => "PUBLISHED", "after" => "value 2026", "tags" => nil, "and" => nil, "range" => range }],
         "range" => range,
-      }, vars[2])
+      }, fields(vars[2]))
+      assert_kind_of PARSER::InputObjects::PostFilter, vars[2]
+      assert_equal "DRAFT", vars[2].status
+      assert_equal 100, vars[2].and[0].range.to
     end
 
     def test_results_are_frozen
@@ -69,8 +73,8 @@ module TinyGQL
       assert_predicate vars, :frozen?
       assert_predicate vars[0], :frozen?
       assert_predicate vars[2], :frozen?
-      assert_predicate vars[2]["and"], :frozen?
-      assert_predicate vars[2]["and"][0]["range"], :frozen?
+      assert_predicate vars[2].and, :frozen?
+      assert_predicate vars[2].and[0].range, :frozen?
     end
 
     def test_missing_and_null_variables
@@ -83,10 +87,10 @@ module TinyGQL
 
     def test_variable_defaults
       query = "query($r: Range = { from: 2 }, $m: [[Int]] = 3, $s: Status = DRAFT, $f: Float = 1, $x: Int = null) { between(range: $r, matrix: $m, score: $f) { id } posts(ids: 1, first: $x, filter: { status: $s }) { id } }"
-      assert_equal [{ "from" => 2, "to" => 100 }, [[3]], "DRAFT", 1.0, nil], coerce(query, {})
+      assert_equal [{ "from" => 2, "to" => 100 }, [[3]], "DRAFT", 1.0, nil], fields(coerce(query, {}))
       # Explicit nulls are kept
       assert_equal [{ "from" => 3, "to" => nil }, [[1, nil]], "PUBLISHED", 2.0, 4],
-        coerce(query, { "r" => { "from" => 3, "to" => nil }, "m" => [[1, nil]], "s" => "PUBLISHED", "f" => 2, "x" => 4 })
+        fields(coerce(query, { "r" => { "from" => 3, "to" => nil }, "m" => [[1, nil]], "s" => "PUBLISHED", "f" => 2, "x" => 4 }))
     end
 
     def test_custom_scalar_defaults_are_coerced_each_time
@@ -99,7 +103,7 @@ module TinyGQL
         def coerce_literal_DateTime(kind, text) = [kind, text]
       end
       vars = parser.coerce(parser.parse("query($i: I) { f(i: $i) }"), { "i" => {} }, scalars: scalars.new)
-      assert_equal({ "at" => [:STRING, "2026"], "list" => [[:STRING, "a"], [:STRING, "b"]] }, vars[0])
+      assert_equal({ "at" => [:STRING, "2026"], "list" => [[:STRING, "a"], [:STRING, "b"]] }, fields(vars[0]))
     end
 
     def test_invalid_variables
@@ -160,12 +164,12 @@ module TinyGQL
       matrix_type = Nodes::ListType.new(0, Nodes::ListType.new(0, Nodes::NamedType.new(0, "Int")))
 
       vars = PARSER.coerce(doc, {}, scalars: TestScalars.new)
-      # Missing variables are left out, and fields get their defaults
-      assert_equal({ "from" => 1, "to" => 100 }, inputs.literal_value(range_type, range, vars))
+      # Fields with missing variables get their defaults
+      assert_equal({ "from" => 1, "to" => 100 }, fields(inputs.literal_value(range_type, range, vars)))
       assert_equal [[nil]], inputs.literal_value(matrix_type, matrix, vars)
 
       vars = PARSER.coerce(doc, { "to" => 5, "i" => 6 }, scalars: TestScalars.new)
-      assert_equal({ "from" => 1, "to" => 5 }, inputs.literal_value(range_type, range, vars))
+      assert_equal({ "from" => 1, "to" => 5 }, fields(inputs.literal_value(range_type, range, vars)))
       assert_equal [[6]], inputs.literal_value(matrix_type, matrix, vars)
     end
 
