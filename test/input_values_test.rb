@@ -296,7 +296,7 @@ module TinyGQL
       assert_includes error.message, "coerce_literal_DateTime is not implemented"
 
       # Custom scalars aren't called for nulls or variables
-      assert PARSER.parse("query($t: DateTime) { posts(ids: 1, filter: { after: $t }) { id } posts(ids: 1, filter: { after: null }) { id } }")
+      assert PARSER.parse("query($t: DateTime) { posts(ids: 1, filter: { after: $t }) { id } b: posts(ids: 1, filter: { after: null }) { id } }")
     end
 
     def test_custom_scalars

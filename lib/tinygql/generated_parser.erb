@@ -55,6 +55,23 @@ COMPOSITE_TYPES = {
 }.freeze #: Hash[String, Integer]
 <%- end -%>
 
+# The type of each field of each composite type, for checking that fields
+# with the same response key can merge
+<%- field_types = composite_types.map { |type| [type.name, selectable_fields(type).map { |field| [field.name, field_type_constant(field.type)] }] } -%>
+<%- @field_types.each_value do |constant, type| -%>
+<%= constant %> = <%= type_node type %> #: <%= type.class.name %>
+<%- end -%>
+
+FIELD_TYPES = {
+<%- field_types.each do |type_name, fields| -%>
+  <%= lit type_name %> => {
+<%- fields.each do |name, constant| -%>
+    <%= lit name %> => <%= constant %>,
+<%- end -%>
+  }.freeze,
+<%- end -%>
+}.freeze #: Hash[String, Hash[String, TinyGQL::Nodes::NamedType | TinyGQL::Nodes::ListType | TinyGQL::Nodes::NotNullType]]
+
 private
 
 #: (String) -> bool
@@ -70,6 +87,11 @@ end
 #: (String) -> Integer?
 def abstract_possible_types type
   ABSTRACT_POSSIBLE_TYPES[type]
+end
+
+#: (String, String) -> (TinyGQL::Nodes::NamedType | TinyGQL::Nodes::ListType | TinyGQL::Nodes::NotNullType)
+def field_type parent, name
+  FIELD_TYPES[parent][name]
 end
 
 #: (String) -> bool

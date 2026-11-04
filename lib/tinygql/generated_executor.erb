@@ -153,10 +153,10 @@ class Executor < TinyGQL::Executor
 <%- if field.name == "__typename" -%>
       <%= lit type.name %>
 <%- elsif field.name.start_with?("__") -%>
-      type = <%= result_type_constant field.type %>
+      type = <%= field_type_constant field.type %>
       raise TinyGQL::ExecutionError, "Introspection isn't supported yet"
 <%- else -%>
-      type = <%= result_type_constant field.type %>
+      type = <%= field_type_constant field.type %>
       value = @resolvers.<%= resolver_method type.name, field.name %>(obj, <%= field.arguments.empty? ? "nil" : "#{field_arguments_method type, field}(nodes[0])" %>, @context)
       complete_value type, nodes, value, path, key, result
 <%- end -%>
@@ -194,11 +194,5 @@ class Executor < TinyGQL::Executor
 <%- end -%>
     <%= arguments_class type.name, field.name %>.new(<%= arguments.each_index.map { "f#{_1}" }.join(", ") %>)
   end
-<%- end -%>
-<%- unless @result_types.empty? -%>
-
-<%- end -%>
-<%- @result_types.each_value do |constant, type| -%>
-  <%= constant %> = <%= type_node type %> #: <%= type.class.name %>
 <%- end -%>
 end

@@ -18,7 +18,7 @@ module TinyGQL
     # @rbs @value_methods: Hash[String, [String, Nodes::NamedType | Nodes::ListType | Nodes::NotNullType]]
     # @rbs @object_methods: Hash[String, [String, Schema::Type]]
     # @rbs @object_bits: Hash[String, Integer]?
-    # @rbs @result_types: Hash[String, [String, Nodes::NamedType | Nodes::ListType | Nodes::NotNullType]]
+    # @rbs @field_types: Hash[String, [String, Nodes::NamedType | Nodes::ListType | Nodes::NotNullType]]
     # @rbs @field_arguments: Hash[Schema::Field, [String, Schema::Type]]
 
     NON_NULL_STRING = Nodes::NotNullType.new(0, Nodes::NamedType.new(0, "String")) #: Nodes::NotNullType
@@ -80,15 +80,18 @@ module TinyGQL
         @argument_methods = []
         @value_methods = {}
         @object_methods = {}
-        @result_types = {}
+        @field_types = {}
         @field_arguments = {}.compare_by_identity
         check_resolver_methods
         check_value_class_names
         parser = ERB.new(File.read(TEMPLATE), trim_mode: "-").result(binding)
         value_methods = @value_methods.length
+        field_types = @field_types.length
         executor = ERB.new(File.read(EXECUTOR_TEMPLATE), trim_mode: "-").result(binding)
-        # The parser template defines the TYPE_ constants the executor uses
+        # The parser template defines the TYPE_ and FIELD_TYPE_ constants
+        # the executor uses
         raise "executor added value methods" unless value_methods == @value_methods.length
+        raise "executor added field types" unless field_types == @field_types.length
         parser + executor
       end
     end
@@ -449,13 +452,14 @@ module TinyGQL
       nullable ? "#{rbs}?" : rbs
     end
 
-    # Registers a constant holding the type node of a field's type, which
-    # results are completed with, and returns its name
+    # Registers a constant holding the type node of an output field's type
+    # and returns its name.  Fields are checked for merging with it, and
+    # their results are completed with it
     #: (Nodes::NamedType | Nodes::ListType | Nodes::NotNullType) -> String
-    def result_type_constant type
+    def field_type_constant type
       key = Schema.type_string(type)
-      @result_types[key] ||= ["RESULT_TYPE_#{@result_types.length}", type]
-      @result_types[key].first
+      @field_types[key] ||= ["FIELD_TYPE_#{@field_types.length}", type]
+      @field_types[key].first
     end
 
     # Registers a method that builds the arguments of `type`.`field`

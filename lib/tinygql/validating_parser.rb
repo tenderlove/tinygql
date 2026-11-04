@@ -22,6 +22,8 @@ module TinyGQL
     # @rbs @fragment_scopes: Hash[String, Scope]
     # @rbs @operation_names: Set[String]
     # @rbs @scope: Scope
+    # @rbs @merged: Hash[Nodes::Field, Hash[Nodes::Field, bool]]
+    # @rbs @collected: Hash[Array[Nodes::Field | Nodes::InlineFragment | Nodes::FragmentSpread], Hash[String, Nodes::Field | Array[Nodes::Field]]]
 
     class ValidationError < StandardError; end
 
@@ -95,6 +97,12 @@ module TinyGQL
       @operation_names = Set.new
       # The scope of the operation or fragment being parsed
       @scope = nil
+      # Pairs of fields already checked for merging, and whether they were
+      # checked as mutually exclusive
+      @merged = {}.compare_by_identity
+      # The fields in each selection set, by response key.  Keys with one
+      # field have the field, and keys with more have an Array of them
+      @collected = {}.compare_by_identity
     end
 
     #: () -> Nodes::Document
@@ -103,6 +111,7 @@ module TinyGQL
       check_anonymous_operations
       check_fragment_spreads
       check_variables
+      check_field_merging
       doc
     end
 
@@ -409,6 +418,251 @@ module TinyGQL
       end
     end
 
+    # Checks that the fields with the same response key in each selection
+    # set can be merged into one, as the spec's "Field Selection Merging"
+    # describes.  Fragments are checked once each, where they're defined,
+    # and their fields are merged into the selection sets that spread them.
+    # Runs after check_variables, which rejects fragments that spread
+    # themselves
+    #: () -> void
+    def check_field_merging
+      i = 0
+      while i < @operations.length
+        check_selection_sets @operations[i].node.selection_set
+        i += 1
+      end
+      fragments = @fragment_scopes.values
+      i = 0
+      while i < fragments.length
+        check_selection_sets fragments[i].node.selection_set
+        i += 1
+      end
+    end
+
+    # Checks `selections` and every selection set inside it
+    #: (Array[Nodes::Field | Nodes::InlineFragment | Nodes::FragmentSpread]) -> void
+    def check_selection_sets selections
+      fields = merged_fields(selections)
+      keys = fields.keys
+      i = 0
+      while i < keys.length
+        same_key = fields[keys[i]]
+        if same_key.is_a?(Array)
+          j = 0
+          while j < same_key.length
+            k = j + 1
+            while k < same_key.length
+              check_merge same_key[j], same_key[k], false
+              k += 1
+            end
+            j += 1
+          end
+        end
+        i += 1
+      end
+
+      i = 0
+      while i < selections.length
+        selection = selections[i]
+        if selection.field?
+          set = selection.selection_set
+          check_selection_sets set if set
+        elsif selection.inline_fragment?
+          check_selection_sets selection.selection_set
+        end
+        i += 1
+      end
+    end
+
+    # The fields in `selections` by response key, including the fields of
+    # fragments
+    #: (Array[Nodes::Field | Nodes::InlineFragment | Nodes::FragmentSpread]) -> Hash[String, Nodes::Field | Array[Nodes::Field]]
+    def merged_fields selections
+      fields = @collected[selections]
+      unless fields
+        fields = @collected[selections] = {}
+        collect_merged_fields selections, fields, nil
+      end
+      fields
+    end
+
+    # Adds the fields in `selections` to `fields` by response key, including
+    # the fields of fragments.  `spread` has the fragments already added,
+    # and is nil until there are some
+    #: (Array[Nodes::Field | Nodes::InlineFragment | Nodes::FragmentSpread], Hash[String, Nodes::Field | Array[Nodes::Field]], Hash[String, true]?) -> Hash[String, true]?
+    def collect_merged_fields selections, fields, spread
+      i = 0
+      while i < selections.length
+        selection = selections[i]
+        if selection.field?
+          key = selection.aliaz || selection.name
+          same_key = fields[key]
+          if same_key.nil?
+            fields[key] = selection
+          elsif same_key.is_a?(Array)
+            same_key << selection
+          else
+            fields[key] = [same_key, selection]
+          end
+        elsif selection.inline_fragment?
+          spread = collect_merged_fields(selection.selection_set, fields, spread)
+        else
+          name = selection.fragment_name
+          spread ||= {}
+          unless spread.key?(name)
+            spread[name] = true
+            spread = collect_merged_fields(@fragment_scopes[name].node.selection_set, fields, spread)
+          end
+        end
+        i += 1
+      end
+      spread
+    end
+
+    # Checks that fields `a` and `b`, which have the same response key, can
+    # be merged.  They're mutually exclusive when they're on different
+    # object types, or inside fields that are, so only one of them can be
+    # in the response.  Exclusive fields may differ in name and arguments,
+    # but must still have the same response shape
+    #: (Nodes::Field, Nodes::Field, bool) -> void
+    def check_merge a, b, exclusive
+      return if a.equal?(b)
+
+      # Fragments spread in many places compare the same pairs many times.
+      # Checking a pair as not exclusive also checks it as exclusive
+      first, second = a.start <= b.start ? [a, b] : [b, a]
+      checked = @merged[first] ||= {}.compare_by_identity
+      previous = checked[second]
+      return if previous == false || (previous && exclusive)
+      checked[second] = exclusive
+
+      key = b.aliaz || b.name
+      parent_a = a.parent_type
+      parent_b = b.parent_type
+      exclusive ||= parent_a != parent_b && !abstract_possible_types(parent_a) && !abstract_possible_types(parent_b)
+      unless exclusive
+        if a.name != b.name
+          validation_error! "Fields #{key} conflict because #{a.name} and #{b.name} are different fields", b.start
+        end
+        unless same_arguments?(a.arguments, b.arguments)
+          validation_error! "Fields #{key} conflict because they have differing arguments", b.start
+        end
+      end
+
+      type_a = field_type(parent_a, a.name)
+      type_b = field_type(parent_b, b.name)
+      return_type_conflict key, a, type_a, b, type_b unless same_response_shape?(type_a, type_b)
+
+      set_a = a.selection_set
+      set_b = b.selection_set
+      return unless set_a && set_b
+
+      fields_a = merged_fields(set_a)
+      fields_b = merged_fields(set_b)
+      keys = fields_a.keys
+      i = 0
+      while i < keys.length
+        if (others = fields_b[keys[i]])
+          check_merges fields_a[keys[i]], others, exclusive
+        end
+        i += 1
+      end
+    end
+
+    # Checks each field in `mine` against each field in `others`.  Each is
+    # a field or an Array of fields with the same response key
+    #: (Nodes::Field | Array[Nodes::Field], Nodes::Field | Array[Nodes::Field], bool) -> void
+    def check_merges mine, others, exclusive
+      if mine.is_a?(Array)
+        j = 0
+        while j < mine.length
+          check_merges mine[j], others, exclusive
+          j += 1
+        end
+      elsif others.is_a?(Array)
+        k = 0
+        while k < others.length
+          check_merge mine, others[k], exclusive
+          k += 1
+        end
+      else
+        check_merge mine, others, exclusive
+      end
+    end
+
+    # Whether fields of types `a` and `b` give values of the same shape.
+    # Their children are checked separately
+    #: (Nodes::NamedType | Nodes::ListType | Nodes::NotNullType, Nodes::NamedType | Nodes::ListType | Nodes::NotNullType) -> bool
+    def same_response_shape? a, b
+      while true
+        if a.not_null_type? || b.not_null_type?
+          return false unless a.not_null_type? && b.not_null_type?
+          a = a.type
+          b = b.type
+        elsif a.list_type? || b.list_type?
+          return false unless a.list_type? && b.list_type?
+          a = a.type
+          b = b.type
+        elsif composite_type?(a.name) || composite_type?(b.name)
+          return composite_type?(a.name) && composite_type?(b.name)
+        else
+          return a.name == b.name
+        end
+      end
+    end
+
+    # Whether two fields' arguments are the same, in any order
+    #: (Array[Nodes::Argument]?, Array[Nodes::Argument]?) -> bool
+    def same_arguments? a, b
+      return (a.nil? || a.empty?) && (b.nil? || b.empty?) if a.nil? || b.nil?
+      return false unless a.length == b.length
+      i = 0
+      while i < a.length
+        argument = a[i]
+        j = 0
+        j += 1 while j < b.length && b[j].name != argument.name
+        return false unless j < b.length && same_value?(argument.value, b[j].value)
+        i += 1
+      end
+      true
+    end
+
+    # Whether two values are written the same.  Input object fields may be
+    # in any order
+    #: (Nodes::Value | Nodes::ObjectValue | Nodes::Variable, Nodes::Value | Nodes::ObjectValue | Nodes::Variable) -> bool
+    def same_value? a, b
+      return false unless a.class == b.class
+
+      if a.variable?
+        a.name == b.name
+      elsif a.object_value?
+        fields_a = a.values
+        fields_b = b.values
+        return false unless fields_a.length == fields_b.length
+        i = 0
+        while i < fields_a.length
+          field = fields_a[i]
+          j = 0
+          j += 1 while j < fields_b.length && fields_b[j].name != field.name
+          return false unless j < fields_b.length && same_value?(field.value, fields_b[j].value)
+          i += 1
+        end
+        true
+      elsif a.list_value?
+        items_a = a.value
+        items_b = b.value
+        return false unless items_a.length == items_b.length
+        i = 0
+        while i < items_a.length
+          return false unless same_value?(items_a[i], items_b[i])
+          i += 1
+        end
+        true
+      else
+        a.value == b.value
+      end
+    end
+
     #: (Integer) -> Integer
     def lowest_bit bits
       (bits & -bits).bit_length - 1
@@ -493,6 +747,36 @@ module TinyGQL
       unless overlap
         validation_error! "Fragment on #{type} can never apply to #{parent}", loc
       end
+    end
+
+    # Called when fields `a` and `b`, with response key `key`, return
+    # values of different shapes, like String and Image!.  The spec doesn't
+    # allow this even when the fields are on different object types, so
+    # this raises ValidationError.  Override it in a subclass to accept
+    # these documents anyway, like graphql-ruby's
+    # `allow_legacy_invalid_return_type_conflicts`.  The executor only
+    # includes fields whose fragments apply to each object, so it returns
+    # the right data for them when the fields are mutually exclusive
+    #
+    #   class RecordingParser < MyParser
+    #     attr_reader :conflicts
+    #
+    #     def initialize doc, scalars: Scalars.new
+    #       super
+    #       @conflicts = []
+    #     end
+    #
+    #     private def return_type_conflict(key, a, type_a, b, type_b)
+    #       @conflicts << key
+    #     end
+    #   end
+    #
+    #   parser = RecordingParser.new(query)
+    #   doc = parser.parse
+    #   parser.conflicts # => ["icon"]
+    #: (String, Nodes::Field, Nodes::NamedType | Nodes::ListType | Nodes::NotNullType, Nodes::Field, Nodes::NamedType | Nodes::ListType | Nodes::NotNullType) -> void
+    def return_type_conflict key, a, type_a, b, type_b
+      validation_error! "Fields #{key} conflict because they return conflicting types #{type_string type_a} and #{type_string type_b}", b.start
     end
 
     #: (String, Integer) -> bot
