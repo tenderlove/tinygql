@@ -501,7 +501,7 @@ A variable that the scalar rejects:
 - a resolver raises `TinyGQL::ExecutionError`
 - a resolver returns `nil` for a non-null field
 - a resolver returns a value that doesn't fit the field's type, like an
-  unknown enum value or a non-Array for a list
+  unknown enum value or a value without `each` for a list
 
 The field becomes `null`, and the error goes into `"errors"` with the
 field's `path`.  If the field is non-null, its parent becomes null

@@ -129,6 +129,15 @@ module TinyGQL
       assert_equal [[:authors, ["a2", "nope", "a1"]]], @db.log
     end
 
+    def test_enumerables_of_lazies
+      resolvers = Class.new(Resolvers) do
+        def Query_authors(obj, args, context) = context.authors.load_many(args.ids).each
+      end.new(@db)
+      result = execute('{ authors(ids: ["a2", "nope", "a1"]) { name } }', resolvers: resolvers)
+      assert_equal({ "data" => { "authors" => [{ "name" => "Mary" }, nil, { "name" => "Ursula" }] } }, result)
+      assert_equal [[:authors, ["a2", "nope", "a1"]]], @db.log
+    end
+
     def test_null_bubbles_from_lazies
       @db.books[1].author_id = "nope"
       result = execute("{ books { id author { name } } }")

@@ -236,28 +236,34 @@ module TinyGQL
     #: (Nodes::NamedType | Nodes::ListType | Nodes::NotNullType, Array[Nodes::Field], untyped, path?, String | Integer, Hash[String, untyped] | Array[untyped], bool) -> untyped
     def complete_present type, nodes, value, path, key, container, nullable
       if type.list_type?
-        unless value.is_a?(Array)
-          raise ExecutionError, "Expected a list for field #{nodes[0].parent_type}.#{nodes[0].name}, got #{value.class}"
-        end
         complete_list type.type, nodes, value, [path, key, container, nullable]
       else
         complete_named type.name, nodes, value, path, key, container, nullable
       end
     end
 
-    #: (Nodes::NamedType | Nodes::ListType | Nodes::NotNullType, Array[Nodes::Field], Array[untyped], path) -> Array[untyped]
+    # Completes the items of `values`, anything with `each`, like an Array
+    # or an ActiveRecord relation
+    #: (Nodes::NamedType | Nodes::ListType | Nodes::NotNullType, Array[Nodes::Field], untyped, path) -> Array[untyped]
     def complete_list type, nodes, values, path
-      list = Array.new(values.length)
-      i = 0
-      while i < values.length
-        begin
-          list[i] = complete_value(type, nodes, values[i], path, i, list)
-        rescue ExecutionError, Scalars::InvalidValue => e
-          list[i] = field_error(e, type, path, i)
-        end
-        i += 1
+      list = []
+      values.each do |value|
+        complete_item type, nodes, value, path, list.length, list
       end
       list
+    rescue NoMethodError => e
+      # Only when `values` has no `each`, not when something completing the
+      # items does
+      raise unless e.name == :each && e.receiver.equal?(values)
+      raise ExecutionError, "Expected a list for field #{nodes[0].parent_type}.#{nodes[0].name}, got #{values.class}"
+    end
+
+    # Completes the list item at `i` in `list`
+    #: (Nodes::NamedType | Nodes::ListType | Nodes::NotNullType, Array[Nodes::Field], untyped, path, Integer, Array[untyped]) -> void
+    def complete_item type, nodes, value, path, i, list
+      list[i] = complete_value(type, nodes, value, path, i, list)
+    rescue ExecutionError, Scalars::InvalidValue => e
+      list[i] = field_error(e, type, path, i)
     end
 
     # Completes queued Lazies until there are none.  Completing a Lazy's

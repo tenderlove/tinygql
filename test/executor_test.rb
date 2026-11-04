@@ -233,6 +233,34 @@ module TinyGQL
       ], result["errors"]
     end
 
+    def test_lists_can_be_enumerables
+      collection = Class.new do
+        include Enumerable
+
+        def initialize(items) = @items = items
+        def each(&) = @items.each(&)
+      end
+      resolvers = Class.new(TestResolvers) do
+        define_method(:User_posts) { |obj, args, context| collection.new(obj.posts) }
+      end.new(@posts, [@alice])
+      @posts[0].tags = Set["a", "b"]
+      result = execute('{ post(id: 1) { tags } node(id: "u1") { ... on User { posts { id } } } }', resolvers: resolvers)
+      assert_equal({ "data" => { "post" => { "tags" => ["a", "b"] }, "node" => { "posts" => [{ "id" => "1" }, { "id" => "2" }] } } }, result)
+
+      # NoMethodErrors from completing items aren't list errors
+      broken = Class.new(resolvers.class) do
+        def Post_id(obj, args, context) = obj.nope
+      end.new(@posts, [@alice])
+      error = assert_raises(NoMethodError) { execute('{ node(id: "u1") { ... on User { posts { id } } } }', resolvers: broken) }
+      assert_equal :nope, error.name
+
+      # Items are still checked and bubble nulls
+      @alice.posts << nil
+      result = execute('{ node(id: "u1") { ... on User { posts { id } } } }', resolvers: resolvers)
+      assert_equal({ "node" => nil }, result["data"])
+      assert_equal ["node", "posts", 2], result["errors"][0]["path"]
+    end
+
     def test_resolver_errors
       resolvers = Class.new(TestResolvers) do
         def Post_status(obj, args, context) = raise(ExecutionError, "nope #{obj.id}")
