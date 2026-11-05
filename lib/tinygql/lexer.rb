@@ -335,8 +335,14 @@ module TinyGQL
       end
     end
 
+    # Line terminators other than LF.  Block strings split lines on CRLF, CR
+    # and LF, and join them with LF
+    CR_LINE_TERMINATOR = /\r\n?/ #: Regexp
+
     #: (String) -> String
     def trim_whitespace(str)
+      str = str.gsub(CR_LINE_TERMINATOR, "\n") if str.include?("\r")
+
       # Early return for the most common cases:
       if str == ""
         return "".dup

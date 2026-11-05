@@ -39,6 +39,15 @@ module TinyGQL
       assert_equal [:STRING, 'Q\\n'], lexer.next_token
     end
 
+    def test_block_string_line_terminators
+      ["\r\n", "\r", "\n"].each do |eol|
+        lexer = Lexer.new %("""#{eol}  one#{eol}    two#{eol}""")
+        assert_equal [:STRING, "one\n  two"], lexer.next_token, eol.inspect
+      end
+      lexer = Lexer.new %("""a\r\nb\rc\nd""")
+      assert_equal [:STRING, "a\nb\nc\nd"], lexer.next_token
+    end
+
     def test_block_string_whitespace_only_boundary_lines
       lexer = Lexer.new %("""\n    \n  hello\n    \n  \t\n""")
       assert_equal [:STRING, "hello"], lexer.next_token
