@@ -31,7 +31,7 @@ module TinyGQL
     TYPE_FIELD = Schema::Field.new("__type", [Schema::InputValue.new("name", NON_NULL_STRING, nil)], Nodes::NamedType.new(0, "__Type")) #: Schema::Field
 
     # The tokens each built in scalar accepts, and the nodes they become
-    BUILTIN_LITERALS = Ractor.make_shareable({
+    BUILTIN_LITERALS = TinyGQL.make_shareable({
       "Int" => [[[:INT], "IntValue"]],
       "Float" => [[[:INT], "IntValue"], [[:FLOAT], "FloatValue"]],
       "String" => [[[:STRING], "StringValue"]],
