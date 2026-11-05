@@ -412,8 +412,7 @@ module TinyGQL
     end
 
     # Input objects and arguments become classes with a reader for each
-    # field, so their names must be constants, and field names can't
-    # replace the methods every object has
+    # field, so their names must be constants
     #: () -> void
     def check_value_class_names
       classes = input_objects.map { [_1.name, _1.name, _1.fields.values] }
@@ -432,11 +431,6 @@ module TinyGQL
       classes.each do |class_name, name, inputs|
         unless class_name.match?(/\A[A-Z]/)
           raise Schema::Error, "#{name} must start with an uppercase letter to be a Ruby class"
-        end
-        inputs.each do |input|
-          if Object.method_defined?(input.name)
-            raise Schema::Error, "#{name}.#{input.name} can't be a reader, it would replace Object##{input.name}"
-          end
         end
       end
     end

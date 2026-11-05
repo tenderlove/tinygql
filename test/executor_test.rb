@@ -329,17 +329,16 @@ module TinyGQL
       assert_equal({ "data" => { "post" => { "id" => "1", "title" => "One" } } }, PARSER.execute(doc, [], resolvers: resolvers, root: root))
     end
 
-    def test_input_names_must_be_readers
-      error = assert_raises(Schema::Error) do
-        Generator.new(TinyGQL.parse_schema("input I { hash: Int } type Query { f(i: I): Int }")).parser_class
-      end
-      assert_equal "I.hash can't be a reader, it would replace Object#hash", error.message
+    def test_input_names_replace_object_methods
+      parser = Generator.new(TinyGQL.parse_schema("input I { method: String, hash: Int } type Query { f(i: I, class: Int): String }")).parser_class
+      resolvers = Class.new(parser::Resolvers) do
+        def Query_f(obj, args, context) = "#{args.i.method} #{args.i.hash} #{args.class}"
+      end.new
+      doc = parser.parse('{ f(i: { method: "GET", hash: 1 }, class: 2) }')
+      assert_equal({ "data" => { "f" => "GET 1 2" } }, parser.execute(doc, [], resolvers: resolvers))
+    end
 
-      error = assert_raises(Schema::Error) do
-        Generator.new(TinyGQL.parse_schema("type Query { f(class: Int): Int }")).parser_class
-      end
-      assert_equal "Query.f.class can't be a reader, it would replace Object#class", error.message
-
+    def test_input_class_names_must_be_constants
       error = assert_raises(Schema::Error) do
         Generator.new(TinyGQL.parse_schema("input i { a: Int } type Query { f(i: i): Int }")).parser_class
       end
