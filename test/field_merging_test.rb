@@ -74,7 +74,7 @@ module TinyGQL
     end
 
     def test_conflicts_in_fragment_definitions
-      assert_error "Fields x conflict", "fragment F on Dog { x: name x: nickname } { dog { name } }"
+      assert_error "Fields x conflict", "fragment F on Dog { x: name x: nickname } { dog { ...F } }"
     end
 
     def test_conflicts_in_merged_subfields

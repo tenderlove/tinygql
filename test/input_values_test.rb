@@ -231,6 +231,16 @@ module TinyGQL
       assert_error "Fragment F spreads itself", "{ posts(ids: 1) { id } } fragment F on Query { ...G } fragment G on Query { ...F }"
     end
 
+    def test_fragments_must_be_used
+      assert_error "Fragment F is never used line: 2", "{ posts(ids: 1) { id } }\nfragment F on Query { posts(ids: 1) { id } }"
+      # Spread only by another fragment that nothing uses
+      assert_error "Fragment G is never used", "{ posts(ids: 1) { id } } fragment G on Query { ...F } fragment F on Query { posts(ids: 1) { id } }"
+      # Used through another fragment, and in another operation
+      assert PARSER.parse("query A { ...G } query B { ...H } fragment G on Query { ...F } fragment F on Query { posts(ids: 1) { id } } fragment H on Query { posts(ids: 2) { id } }")
+      # Used inside an inline fragment
+      assert PARSER.parse("{ ... on Query { ...F } } fragment F on Query { posts(ids: 1) { id } }")
+    end
+
     def test_variable_definitions
       assert_error "Duplicate variable $x", "query($x: Int, $x: Int) { posts(ids: 1, first: $x) { id } }"
       assert_error "Variable $x cannot be of non-input type Post", "query($x: Post) { posts(ids: 1) { id } }"

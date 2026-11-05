@@ -111,6 +111,7 @@ module TinyGQL
       check_anonymous_operations
       check_fragment_spreads
       check_variables
+      check_fragments_used
       check_field_merging
       doc
     end
@@ -415,6 +416,41 @@ module TinyGQL
           end
         end
         id += 1
+      end
+    end
+
+    # Every fragment must be spread by some operation, directly or through
+    # other fragments.  Runs after check_variables, which rejects fragments
+    # that spread themselves, and after check_fragment_spreads, so every
+    # spread names a fragment
+    #: () -> void
+    def check_fragments_used
+      return if @fragment_scopes.empty?
+
+      used = {}
+      pending = []
+      i = 0
+      while i < @operations.length
+        pending.concat @operations[i].spreads
+        i += 1
+      end
+      while (spread = pending.pop)
+        name = spread.fragment_name
+        next if used.key?(name)
+
+        used[name] = true
+        pending.concat @fragment_scopes[name].spreads
+      end
+      return if used.length == @fragment_scopes.length
+
+      fragments = @fragment_scopes.values
+      i = 0
+      while i < fragments.length
+        fragment = fragments[i].node
+        unless used.key?(fragment.fragment_name)
+          validation_error! "Fragment #{fragment.fragment_name} is never used", fragment.start
+        end
+        i += 1
       end
     end
 
