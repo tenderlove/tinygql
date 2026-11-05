@@ -258,6 +258,38 @@ module TinyGQL
       assert PARSER.parse("{ user(id: 1) { id @skip(if: true) name @skip(if: true) } }")
     end
 
+    def test_directive_arguments
+      assert_error "Missing required argument if on directive @include line: 1", "{ user(id: 1) { id @include } }"
+      assert_error "Missing required argument if on directive @skip", "{ user(id: 1) { id @skip(if: true) name @skip } }"
+      assert_error "Unknown argument nope on directive @include", "{ user(id: 1) { id @include(if: true, nope: 1) } }"
+      assert_error "Unknown argument nope on directive @auth", "query @auth(nope: 1) { user(id: 1) { id } }", DIRECTIVE_PARSER
+      assert_error "Duplicate argument if on directive @include", "{ user(id: 1) { id @include(if: true, if: false) } }"
+      assert_error "Invalid value for argument if on directive @include", "{ user(id: 1) { id @include(if: 1) } }"
+      assert_error "Invalid value for argument if on directive @skip", "{ user(id: 1) { id @skip(if: null) } }"
+      assert_error "Invalid value for argument name on directive @tag", "{ user(id: 1) { id @tag(name: 1) } }", DIRECTIVE_PARSER
+      assert DIRECTIVE_PARSER.parse('{ user(id: 1) { id @tag(name: null) @tag(name: "x") } }')
+    end
+
+    def test_variables_in_directive_arguments
+      assert PARSER.parse("query($b: Boolean!) { user(id: 1) { id @include(if: $b) } }")
+      # A nullable variable fits a non-null argument only with a default
+      assert PARSER.parse("query($b: Boolean = true) { user(id: 1) { id @include(if: $b) } }")
+      assert_error "Variable $b of type Boolean used in position expecting Boolean!", "query($b: Boolean) { user(id: 1) { id @include(if: $b) } }"
+      assert_error "Variable $s of type String used in position expecting Boolean!", "query($s: String) { user(id: 1) { id @skip(if: $s) } }"
+      # Checked for each operation that spreads the fragment using it
+      assert_error "Variable $s of type String used in position expecting Boolean!",
+        "query A($s: Boolean!) { user(id: 1) { ...F } } query B($s: String) { user(id: 1) { ...F } } fragment F on User { id @include(if: $s) }"
+      assert_error "Variable $s of type Int used in position expecting String", "query($s: Int) { user(id: 1) { id @tag(name: $s) } }", DIRECTIVE_PARSER
+      # Directives on variable definitions are constant
+      assert_error "Variables can't be used", "query($a: String, $id: ID! @tag2(name: $a)) { user(id: $id) { name @tag(name: $a) } }", VARIABLE_DIRECTIVE_PARSER
+    end
+
+    VARIABLE_DIRECTIVE_PARSER = Generator.new(TinyGQL.parse_schema(<<~GRAPHQL)).parser_class
+      directive @tag(name: String) on FIELD
+      directive @tag2(name: String) on VARIABLE_DEFINITION
+      #{SCHEMA}
+    GRAPHQL
+
     private
 
     def assert_error message, query, parser = PARSER

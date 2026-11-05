@@ -16,6 +16,7 @@ module TinyGQL
   class Generator
     # @rbs @body: String?
     # @rbs @argument_methods: Array[[String, Schema::Type, Schema::Field]]
+    # @rbs @directive_argument_methods: Array[[String, Schema::Directive]]
     # @rbs @value_methods: Hash[String, [String, Nodes::NamedType | Nodes::ListType | Nodes::NotNullType]]
     # @rbs @object_methods: Hash[String, [String, Schema::Type]]
     # @rbs @object_bits: Hash[String, Integer]?
@@ -81,6 +82,7 @@ module TinyGQL
     def body
       @body ||= begin
         @argument_methods = []
+        @directive_argument_methods = []
         @value_methods = {}
         @object_methods = {}
         @field_types = {}
@@ -166,6 +168,15 @@ module TinyGQL
     #: (Schema::Directive) -> Integer
     def directive_location_bits directive
       directive.locations.sum { ValidatingParser::DIRECTIVE_LOCATION_BITS.fetch(_1.to_sym, 0) }
+    end
+
+    # Registers an argument parsing method for `directive` and returns its
+    # name
+    #: (Schema::Directive) -> String
+    def directive_argument_method directive
+      name = "directive_arguments_#{@directive_argument_methods.length}"
+      @directive_argument_methods << [name, directive]
+      name
     end
 
     # Registers an argument parsing method for `field` and returns its name.

@@ -881,6 +881,26 @@ module TinyGQL
       validation_error! "Directive @#{name} can't be used on #{location}", loc
     end
 
+    #: (String, String, Integer) -> bot
+    def unknown_directive_argument! name, directive, loc
+      validation_error! "Unknown argument #{name} on directive @#{directive}", loc
+    end
+
+    #: (String, String, Integer) -> bot
+    def missing_directive_argument! name, directive, loc
+      validation_error! "Missing required argument #{name} on directive @#{directive}", loc
+    end
+
+    #: (String, String, Integer) -> bot
+    def duplicate_directive_argument! name, directive, loc
+      validation_error! "Duplicate argument #{name} on directive @#{directive}", loc
+    end
+
+    #: (String, String, String, Integer) -> bot
+    def invalid_directive_argument! name, directive, message, loc
+      validation_error! "Invalid value for argument #{name} on directive @#{directive}: #{message}", loc
+    end
+
     #: (String, String, String, Integer) -> bot
     def unknown_argument! name, field, parent, loc
       validation_error! "Unknown argument #{name} on #{parent}.#{field}", loc
