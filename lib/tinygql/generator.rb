@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "erb"
+require "json"
 require "tinygql/schema"
 require "tinygql/validating_parser"
 
@@ -20,6 +21,8 @@ module TinyGQL
     # @rbs @object_bits: Hash[String, Integer]?
     # @rbs @field_types: Hash[String, [String, Nodes::NamedType | Nodes::ListType | Nodes::NotNullType]]
     # @rbs @field_arguments: Hash[Schema::Field, [String, Schema::Type]]
+    # @rbs @introspection_indexes: Hash[String, Integer]?
+    # @rbs @introspection_wrappers: Hash[String, [String, String, String]]
 
     NON_NULL_STRING = Nodes::NotNullType.new(0, Nodes::NamedType.new(0, "String")) #: Nodes::NotNullType
     TYPENAME = Schema::Field.new("__typename", [], NON_NULL_STRING) #: Schema::Field
@@ -82,6 +85,7 @@ module TinyGQL
         @object_methods = {}
         @field_types = {}
         @field_arguments = {}.compare_by_identity
+        @introspection_wrappers = {}
         check_resolver_methods
         check_value_class_names
         parser = ERB.new(File.read(TEMPLATE), trim_mode: "-").result(binding)
@@ -106,7 +110,14 @@ module TinyGQL
     # Fields that can be selected on `type`, including meta fields
     #: (Schema::Type) -> Array[Schema::Field]
     def selectable_fields type
-      fields = type.fields.values + [TYPENAME]
+      resolved_fields(type) + [TYPENAME]
+    end
+
+    # Fields with resolver methods: the type's own, and __schema and __type
+    # on the query type
+    #: (Schema::Type) -> Array[Schema::Field]
+    def resolved_fields type
+      fields = type.fields.values
       fields += [SCHEMA_FIELD, TYPE_FIELD] if type.name == schema.roots["query"]
       fields
     end
@@ -184,7 +195,7 @@ module TinyGQL
     # `const` is Ruby code for whether variables are disallowed.  A nullable
     # variable may be used for a non-null input with a default, so those
     # check variables against the nullable type
-    #: (Schema::InputValue, String) -> String
+    #: (Schema::InputValue) -> String
     def input_value input, const
       method = value_method input.type
       if input.type.not_null_type? && input.default_value
@@ -319,11 +330,16 @@ module TinyGQL
       "ENUM_VALUES_#{type_name}"
     end
 
-    # Types that fields can return.  Introspection types are left out, as
-    # introspection isn't supported yet
+    # Types that fields can return
     #: () -> Array[Schema::Type]
     def output_types
-      schema.types.each_value.select { |t| !t.name.start_with?("__") && (t.composite? || t.kind == :scalar || t.kind == :enum) }
+      schema.types.each_value.select { |t| t.composite? || t.kind == :scalar || t.kind == :enum }
+    end
+
+    # Whether `type` is one of the introspection types, like __Type
+    #: (Schema::Type) -> bool
+    def introspection_type? type
+      type.name.start_with?("__")
     end
 
     #: () -> Array[Schema::Type]
@@ -365,7 +381,7 @@ module TinyGQL
       seen = {}
       abstract_types.each { |type| seen["resolve_type_#{type.name}"] = type.name }
       object_types.each do |type|
-        type.fields.each_value do |field|
+        resolved_fields(type).each do |field|
           name = resolver_method(type.name, field.name)
           if seen.key?(name)
             raise Schema::Error, "Resolver method #{name} for #{type.name}.#{field.name} collides with #{seen[name]}"
@@ -384,7 +400,15 @@ module TinyGQL
     # The class that the arguments of `type_name`.`field_name` become
     #: (String, String) -> String
     def arguments_class type_name, field_name
-      "Arguments::#{resolver_method type_name, field_name}"
+      "Arguments::#{arguments_class_name type_name, field_name}"
+    end
+
+    # The resolver method's name, except introspection types start with
+    # "__", which constants can't
+    #: (String, String) -> String
+    def arguments_class_name type_name, field_name
+      name = resolver_method(type_name, field_name)
+      name.start_with?("__") ? "Introspection#{name}" : name
     end
 
     # Input objects and arguments become classes with a reader for each
@@ -392,14 +416,21 @@ module TinyGQL
     # replace the methods every object has
     #: () -> void
     def check_value_class_names
-      classes = input_objects.map { [_1.name, _1.fields.values] }
+      classes = input_objects.map { [_1.name, _1.name, _1.fields.values] }
+      seen = {}
       object_types.each do |type|
-        type.fields.each_value do |field|
-          classes << ["#{type.name}.#{field.name}", field.arguments] unless field.arguments.empty?
+        resolved_fields(type).each do |field|
+          next if field.arguments.empty?
+          name = arguments_class_name(type.name, field.name)
+          if seen.key?(name)
+            raise Schema::Error, "Arguments class #{name} for #{type.name}.#{field.name} collides with #{seen[name]}"
+          end
+          seen[name] = "#{type.name}.#{field.name}"
+          classes << [name, "#{type.name}.#{field.name}", field.arguments]
         end
       end
-      classes.each do |name, inputs|
-        unless name.match?(/\A[A-Z]/)
+      classes.each do |class_name, name, inputs|
+        unless class_name.match?(/\A[A-Z]/)
           raise Schema::Error, "#{name} must start with an uppercase letter to be a Ruby class"
         end
         inputs.each do |input|
@@ -471,6 +502,116 @@ module TinyGQL
     #: () -> Array[Schema::Type]
     def custom_scalars
       schema.types.each_value.select { |t| t.kind == :scalar && !Schema::BUILTIN_SCALARS.include?(t.name) }
+    end
+
+    TYPE_KINDS = {
+      object: "OBJECT",
+      interface: "INTERFACE",
+      union: "UNION",
+      scalar: "SCALAR",
+      enum: "ENUM",
+      input: "INPUT_OBJECT",
+    }.freeze #: Hash[Symbol, String]
+
+    # The local variable in the generated Introspection module for type node
+    # `type`.  Wrapped types, like "[ID!]", are registered so the template
+    # can define them before they're used
+    #: (Nodes::NamedType | Nodes::ListType | Nodes::NotNullType) -> String
+    def introspection_ref type
+      return introspection_variable(type.name) if type.named_type?
+
+      key = Schema.type_string(type)
+      unless @introspection_wrappers.key?(key)
+        inner = introspection_ref(type.type)
+        kind = type.not_null_type? ? "NON_NULL" : "LIST"
+        @introspection_wrappers[key] = ["wrapped_#{@introspection_wrappers.length}", kind, inner]
+      end
+      @introspection_wrappers[key].first
+    end
+
+    # The local variable in the generated Introspection module for named
+    # type `name`.  These aren't constants because filling a constant cache
+    # checks whether the value is Ractor shareable, which walks every type
+    # reachable from a frozen one
+    #: (String) -> String
+    def introspection_variable name
+      @introspection_indexes ||= schema.types.each_key.with_index.to_h
+      "type_#{@introspection_indexes.fetch(name)}"
+    end
+
+    # Ruby code that builds `type`'s Introspection::Type, before its lists
+    # are defined
+    #: (Schema::Type) -> String
+    def introspection_type type
+      specified_by = type.kind == :scalar ? lit_or_nil(type.specified_by_url) : "nil"
+      one_of = type.kind == :input ? type.one_of.to_s : "nil"
+      "Type.new(#{lit TYPE_KINDS.fetch(type.kind)}, #{lit type.name}, #{lit_or_nil type.description}, #{specified_by}, #{one_of})"
+    end
+
+    # Ruby code that defines `type`'s lists, indented by `indent`
+    #: (Schema::Type, String) -> String
+    def introspection_define type, indent
+      fields = interfaces = possible_types = enum_values = input_fields = "nil"
+      case type.kind
+      when :object, :interface
+        fields = introspection_list(type.fields.each_value.map { introspection_field _1, "#{indent}  " }, indent)
+        interfaces = introspection_list(type.interfaces.map { introspection_variable _1 }, indent)
+      when :enum
+        enum_values = introspection_list(type.values.each_value.map { |value|
+          "EnumValue.new(#{lit value.name}, #{lit_or_nil value.description}, #{lit_or_nil value.deprecation_reason})"
+        }, indent)
+      when :input
+        input_fields = introspection_list(type.fields.each_value.map { introspection_input _1 }, indent)
+      end
+      if type.kind == :interface || type.kind == :union
+        possible_types = introspection_list(schema.possible_types(type.name).map { introspection_variable _1 }, indent)
+      end
+      "#{introspection_variable type.name}.define(#{fields}, #{interfaces}, #{possible_types}, #{enum_values}, #{input_fields})"
+    end
+
+    # Ruby code that builds `directive`'s Introspection::Directive
+    #: (Schema::Directive, String) -> String
+    def introspection_directive directive, indent
+      locations = "[#{directive.locations.map { lit _1 }.join(", ")}]"
+      args = introspection_list(directive.arguments.map { introspection_input _1 }, indent)
+      "Directive.new(#{lit directive.name}, #{lit_or_nil directive.description}, #{locations}, #{args}, #{directive.repeatable})"
+    end
+
+    #: (Schema::Field, String) -> String
+    def introspection_field field, indent
+      args = introspection_list(field.arguments.map { introspection_input _1 }, indent)
+      "Field.new(#{lit field.name}, #{lit_or_nil field.description}, #{args}, #{introspection_ref field.type}, #{lit_or_nil field.deprecation_reason})"
+    end
+
+    #: (Schema::InputValue) -> String
+    def introspection_input input
+      default = input.default_value ? lit(graphql_value(input.default_value)) : "nil"
+      "InputValue.new(#{lit input.name}, #{lit_or_nil input.description}, #{introspection_ref input.type}, #{default}, #{lit_or_nil input.deprecation_reason})"
+    end
+
+    # An array of `items`, one per line, or EMPTY
+    #: (Array[String], String) -> String
+    def introspection_list items, indent
+      return "EMPTY" if items.empty?
+      return "[#{items.first}]" if items.length == 1 && items.first.length < 60
+      "[\n#{items.map { "#{indent}  #{_1},\n" }.join}#{indent}]"
+    end
+
+    # Value node `node` printed as GraphQL, for defaultValue
+    #: (Nodes::Value | Nodes::ObjectValue | Nodes::Variable) -> String
+    def graphql_value node
+      case node
+      when Nodes::NullValue then "null"
+      when Nodes::StringValue then JSON.generate(node.value)
+      when Nodes::ListValue then "[#{node.value.map { graphql_value _1 }.join(", ")}]"
+      when Nodes::ObjectValue then "{#{node.values.map { "#{_1.name}: #{graphql_value _1.value}" }.join(", ")}}"
+      else node.value
+      end
+    end
+
+    #: (String?) -> String
+    def lit_or_nil str
+      str ? lit(str) : "nil"
     end
 
     #: (String) -> String

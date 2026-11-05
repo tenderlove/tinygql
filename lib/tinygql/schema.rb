@@ -10,23 +10,31 @@ module TinyGQL
 
     # `kind` is one of :object, :interface, :union, :scalar, :enum, or :input.
     # `fields` maps names to Fields for objects and interfaces, and to
-    # InputValues for input objects.  `values` are an enum's value names
+    # InputValues for input objects.  `values` maps an enum's value names to
+    # EnumValues.  `specified_by_url` comes from a scalar's @specifiedBy, and
+    # `one_of` is whether an input object has @oneOf
     class Type
       attr_reader :kind #: Symbol
       attr_reader :name #: String
       attr_reader :fields #: Hash[String, Field | InputValue]
       attr_reader :interfaces #: Array[String]
       attr_reader :members #: Array[String]
-      attr_reader :values #: Array[String]
+      attr_reader :values #: Hash[String, EnumValue]
+      attr_reader :description #: String?
+      attr_reader :specified_by_url #: String?
+      attr_reader :one_of #: bool
 
-      #: (Symbol, String, Hash[String, Field | InputValue], Array[String], Array[String], Array[String]) -> void
-      def initialize kind, name, fields, interfaces, members, values
+      #: (Symbol, String, Hash[String, Field | InputValue], Array[String], Array[String], Hash[String, EnumValue], ?String?, ?String?, ?bool) -> void
+      def initialize kind, name, fields, interfaces, members, values, description = nil, specified_by_url = nil, one_of = false
         @kind = kind
         @name = name
         @fields = fields
         @interfaces = interfaces
         @members = members
         @values = values
+        @description = description
+        @specified_by_url = specified_by_url
+        @one_of = one_of
       end
 
       #: () -> bool
@@ -37,17 +45,22 @@ module TinyGQL
     end
 
     # `type` is the field's type node, like `[User!]!`.  `type_name` is the
-    # named type with list and non-null wrappers removed
+    # named type with list and non-null wrappers removed.
+    # `deprecation_reason` is nil unless the field has @deprecated
     class Field
       attr_reader :name #: String
       attr_reader :arguments #: Array[InputValue]
       attr_reader :type #: Nodes::NamedType | Nodes::ListType | Nodes::NotNullType
+      attr_reader :description #: String?
+      attr_reader :deprecation_reason #: String?
 
-      #: (String, Array[InputValue], Nodes::NamedType | Nodes::ListType | Nodes::NotNullType) -> void
-      def initialize name, arguments, type
+      #: (String, Array[InputValue], Nodes::NamedType | Nodes::ListType | Nodes::NotNullType, ?String?, ?String?) -> void
+      def initialize name, arguments, type, description = nil, deprecation_reason = nil
         @name = name
         @arguments = arguments
         @type = type
+        @description = description
+        @deprecation_reason = deprecation_reason
       end
 
       #: () -> String
@@ -60,19 +73,87 @@ module TinyGQL
       attr_reader :name #: String
       attr_reader :type #: Nodes::NamedType | Nodes::ListType | Nodes::NotNullType
       attr_reader :default_value #: (Nodes::Value | Nodes::ObjectValue | Nodes::Variable)?
+      attr_reader :description #: String?
+      attr_reader :deprecation_reason #: String?
 
-      #: (String, Nodes::NamedType | Nodes::ListType | Nodes::NotNullType, (Nodes::Value | Nodes::ObjectValue | Nodes::Variable)?) -> void
-      def initialize name, type, default_value
+      #: (String, Nodes::NamedType | Nodes::ListType | Nodes::NotNullType, (Nodes::Value | Nodes::ObjectValue | Nodes::Variable)?, ?String?, ?String?) -> void
+      def initialize name, type, default_value, description = nil, deprecation_reason = nil
         @name = name
         @type = type
         @default_value = default_value
+        @description = description
+        @deprecation_reason = deprecation_reason
       end
 
       #: () -> bool
       def required; type.not_null_type? && default_value.nil?; end
     end
 
+    class EnumValue
+      attr_reader :name #: String
+      attr_reader :description #: String?
+      attr_reader :deprecation_reason #: String?
+
+      #: (String, String?, String?) -> void
+      def initialize name, description, deprecation_reason
+        @name = name
+        @description = description
+        @deprecation_reason = deprecation_reason
+      end
+    end
+
+    # A directive definition.  `locations` are names like "FIELD"
+    class Directive
+      attr_reader :name #: String
+      attr_reader :description #: String?
+      attr_reader :arguments #: Array[InputValue]
+      attr_reader :locations #: Array[String]
+      attr_reader :repeatable #: bool
+
+      #: (String, String?, Array[InputValue], Array[String], bool) -> void
+      def initialize name, description, arguments, locations, repeatable
+        @name = name
+        @description = description
+        @arguments = arguments
+        @locations = locations
+        @repeatable = repeatable
+      end
+    end
+
     BUILTIN_SCALARS = %w{ Int Float String Boolean ID }.freeze #: Array[String]
+
+    # Descriptions of the built in scalars, unless the schema declares them
+    BUILTIN_SCALAR_DESCRIPTIONS = {
+      "Int" => "Represents non-fractional signed whole numeric values. Int can represent values between -(2^31) and 2^31 - 1.",
+      "Float" => "Represents signed double-precision fractional values as specified by [IEEE 754](https://en.wikipedia.org/wiki/IEEE_floating_point).",
+      "String" => "Represents textual data as UTF-8 character sequences. This type is most often used by GraphQL to represent free-form human-readable text.",
+      "Boolean" => "Represents `true` or `false` values.",
+      "ID" => "Represents a unique identifier, often used to refetch an object or as key for a cache. The ID type appears in a JSON response as a String; however, it is not intended to be human-readable. When expected as an input type, any string (such as `\"4\"`) or integer (such as `4`) input value will be accepted as an ID.",
+    }.freeze #: Hash[String, String]
+
+    # The directives every schema has, from the GraphQL spec.  Schemas may
+    # declare them too
+    BUILTIN_DIRECTIVES = <<~GRAPHQL #: String
+      "Directs the executor to include this field or fragment only when the `if` argument is true."
+      directive @include("Included when true." if: Boolean!) on FIELD | FRAGMENT_SPREAD | INLINE_FRAGMENT
+
+      "Directs the executor to skip this field or fragment when the `if` argument is true."
+      directive @skip("Skipped when true." if: Boolean!) on FIELD | FRAGMENT_SPREAD | INLINE_FRAGMENT
+
+      "Marks an element of a GraphQL schema as no longer supported."
+      directive @deprecated(
+        "Explains why this element was deprecated, usually also including a suggestion for how to access supported similar data. Formatted using the Markdown syntax, as specified by [CommonMark](https://commonmark.org/)."
+        reason: String = "No longer supported"
+      ) on FIELD_DEFINITION | ARGUMENT_DEFINITION | INPUT_FIELD_DEFINITION | ENUM_VALUE
+
+      "Exposes a URL that specifies the behavior of this scalar."
+      directive @specifiedBy("The URL that specifies the behavior of this scalar." url: String!) on SCALAR
+
+      "Indicates exactly one field must be supplied and this field must not be `null`."
+      directive @oneOf on INPUT_OBJECT
+    GRAPHQL
+
+    DEFAULT_DEPRECATION_REASON = "No longer supported" #: String
 
     # The type name with list and non-null wrappers removed
     #: (Nodes::NamedType | Nodes::ListType | Nodes::NotNullType) -> String
@@ -104,10 +185,18 @@ module TinyGQL
     # Map of operation type ("query", "mutation", "subscription") to type name
     attr_reader :roots #: Hash[String, String]
 
+    # Map of directive name to Directive, including the built in ones
+    attr_reader :directives #: Hash[String, Directive]
+
+    # The schema definition's description
+    attr_reader :description #: String?
+
     #: (Nodes::Document) -> void
     def initialize document
       @types = {}
-      BUILTIN_SCALARS.each { |name| @types[name] = Type.new(:scalar, name, {}, [], [], []) }
+      BUILTIN_SCALARS.each { |name| @types[name] = Type.new(:scalar, name, {}, [], [], {}, BUILTIN_SCALAR_DESCRIPTIONS[name]) }
+      @directives = {}
+      @description = nil
 
       roots = nil
       extensions = []
@@ -117,18 +206,21 @@ module TinyGQL
         when Nodes::SchemaDefinition
           raise Error, "Multiple schema definitions" if roots
           roots = root_operations(defn.root_operation_definitions)
+          @description = defn.description&.value
         when Nodes::ObjectTypeDefinition
-          add_type :object, defn.name, fields(defn.fields_definition), names(defn.implements_interfaces)
+          add_type :object, defn, fields(defn.fields_definition), names(defn.implements_interfaces)
         when Nodes::InterfaceTypeDefinition
-          add_type :interface, defn.name, fields(defn.fields_definition), names(defn.implements_interfaces)
+          add_type :interface, defn, fields(defn.fields_definition), names(defn.implements_interfaces)
         when Nodes::UnionTypeDefinition
-          add_type :union, defn.name, {}, [], names(defn.union_member_types)
+          add_type :union, defn, {}, [], names(defn.union_member_types)
         when Nodes::ScalarTypeDefinition
-          add_type :scalar, defn.name
+          add_type :scalar, defn
         when Nodes::EnumTypeDefinition
-          add_type :enum, defn.name, {}, [], [], enum_values(defn.enum_value_definition)
+          add_type :enum, defn, {}, [], [], enum_values(defn.enum_value_definition)
         when Nodes::InputObjectTypeDefinition
-          add_type :input, defn.name, input_values(defn.input_fields_definition)
+          add_type :input, defn, input_values(defn.input_fields_definition)
+        when Nodes::DirectiveDefinition
+          add_directive defn
         when Nodes::SchemaExtension,
              Nodes::ObjectTypeExtension,
              Nodes::InterfaceTypeExtension,
@@ -136,8 +228,7 @@ module TinyGQL
              Nodes::EnumTypeExtension,
              Nodes::InputObjectTypeExtension
           extensions << defn
-        when Nodes::DirectiveDefinition,
-             Nodes::ScalarTypeExtension
+        when Nodes::ScalarTypeExtension
           # These don't affect which queries can be parsed
         else
           raise Error, "Unexpected #{defn.class.name.split("::").last} in schema"
@@ -158,6 +249,10 @@ module TinyGQL
         else
           extend_type ext
         end
+      end
+
+      Parser.parse(BUILTIN_DIRECTIVES).definitions.each do |defn|
+        add_directive defn unless @directives.key?(defn.name)
       end
 
       @roots = roots
@@ -184,12 +279,48 @@ module TinyGQL
 
     private
 
-    #: (Symbol, String, ?Hash[String, Field | InputValue], ?Array[String], ?Array[String], ?Array[String]) -> void
-    def add_type kind, name, fields = {}, interfaces = [], members = [], values = []
-      # Schema dumps often declare the built in scalars too
-      return if kind == :scalar && BUILTIN_SCALARS.include?(name)
-      raise Error, "Duplicate type #{name}" if @types.key?(name)
-      @types[name] = Type.new(kind, name, fields, interfaces, members, values)
+    #: (Symbol, Nodes::ObjectTypeDefinition | Nodes::InterfaceTypeDefinition | Nodes::UnionTypeDefinition | Nodes::ScalarTypeDefinition | Nodes::EnumTypeDefinition | Nodes::InputObjectTypeDefinition, ?Hash[String, Field | InputValue], ?Array[String], ?Array[String], ?Hash[String, EnumValue]) -> void
+    def add_type kind, defn, fields = {}, interfaces = [], members = [], values = {}
+      name = defn.name
+      # Schema dumps often declare the built in scalars too, maybe with
+      # their own descriptions
+      unless kind == :scalar && BUILTIN_SCALARS.include?(name)
+        raise Error, "Duplicate type #{name}" if @types.key?(name)
+      end
+
+      specified_by = directive(defn.directives, "specifiedBy")
+      url = specified_by && directive_argument(specified_by, "url")
+      one_of = !directive(defn.directives, "oneOf").nil?
+      description = defn.description&.value || BUILTIN_SCALAR_DESCRIPTIONS[name]
+      @types[name] = Type.new(kind, name, fields, interfaces, members, values, description, url, one_of)
+    end
+
+    #: (Nodes::DirectiveDefinition) -> void
+    def add_directive defn
+      raise Error, "Duplicate directive @#{defn.name}" if @directives.key?(defn.name)
+      @directives[defn.name] = Directive.new(defn.name, defn.description&.value,
+        input_values(defn.arguments_definition).values, defn.directive_locations.map(&:name), defn.repeatable)
+    end
+
+    # The first directive called `name` in `directives`
+    #: (Array[Nodes::Directive]?, String) -> Nodes::Directive?
+    def directive directives, name
+      directives&.find { |d| d.name == name }
+    end
+
+    # The value of string argument `name` of `directive`, if it was given
+    #: (Nodes::Directive, String) -> String?
+    def directive_argument directive, name
+      arg = directive.arguments&.find { |a| a.name == name }
+      arg && !arg.value.null_value? ? arg.value.value : nil
+    end
+
+    # The reason given to @deprecated, if `directives` include it
+    #: (Array[Nodes::Directive]?) -> String?
+    def deprecation_reason directives
+      deprecated = directive(directives, "deprecated")
+      return unless deprecated
+      directive_argument(deprecated, "reason") || DEFAULT_DEPRECATION_REASON
     end
 
     #: (Nodes::ObjectTypeExtension | Nodes::InterfaceTypeExtension | Nodes::UnionTypeExtension | Nodes::EnumTypeExtension | Nodes::InputObjectTypeExtension) -> void
@@ -210,9 +341,9 @@ module TinyGQL
       when :union
         type.members.concat names(ext.union_member_types)
       when :enum
-        enum_values(ext.enum_value_definition).each do |value|
-          raise Error, "Duplicate value #{type.name}.#{value}" if type.values.include?(value)
-          type.values << value
+        enum_values(ext.enum_value_definition).each do |name, value|
+          raise Error, "Duplicate value #{type.name}.#{name}" if type.values.key?(name)
+          type.values[name] = value
         end
       when :input
         input_values(ext.input_fields_definition).each do |name, field|
@@ -240,7 +371,8 @@ module TinyGQL
     def fields defs
       (defs || []).each_with_object({}) { |d, h|
         raise Error, "Duplicate field #{d.name}" if h.key?(d.name)
-        h[d.name] = Field.new(d.name, input_values(d.arguments_definition).values, d.type)
+        h[d.name] = Field.new(d.name, input_values(d.arguments_definition).values, d.type,
+          d.description&.value, deprecation_reason(d.directives))
       }
     end
 
@@ -248,17 +380,18 @@ module TinyGQL
     def input_values defs
       (defs || []).each_with_object({}) { |d, h|
         raise Error, "Duplicate input value #{d.name}" if h.key?(d.name)
-        h[d.name] = InputValue.new(d.name, d.type, d.default_value)
+        h[d.name] = InputValue.new(d.name, d.type, d.default_value,
+          d.description&.value, deprecation_reason(d.directives))
       }
     end
 
-    #: (Array[Nodes::EnumValueDefinition]?) -> Array[String]
+    #: (Array[Nodes::EnumValueDefinition]?) -> Hash[String, EnumValue]
     def enum_values defs
-      values = (defs || []).map { |d| d.enum_value.value }
-      if (duplicate = values.tally.find { |_, count| count > 1 })
-        raise Error, "Duplicate enum value #{duplicate.first}"
-      end
-      values
+      (defs || []).each_with_object({}) { |d, h|
+        name = d.enum_value.value
+        raise Error, "Duplicate enum value #{name}" if h.key?(name)
+        h[name] = EnumValue.new(name, d.description&.value, deprecation_reason(d.directives))
+      }
     end
 
     #: (InputValue, String) -> void
@@ -309,6 +442,10 @@ module TinyGQL
             raise Error, "Union #{type.name} includes #{name}, which is not an object type"
           end
         end
+      end
+
+      @directives.each_value do |directive|
+        directive.arguments.each { |arg| check_input_type arg, "@#{directive.name}(#{arg.name})" }
       end
     end
   end

@@ -460,6 +460,30 @@ non-null, so the null goes up to `data`:
 }
 ```
 
+## Introspection
+
+`__schema` and `__type` work like other fields.  The generator builds the
+schema's introspection results into the parser, as frozen
+`TinyGQL::Introspection` objects in the `Introspection` module, so
+introspection doesn't touch your resolvers or data.  The results include
+descriptions, `@deprecated` reasons, `@specifiedBy` URLs, `@oneOf`, and
+the schema's directive definitions.
+
+`Query___schema` and `Query___type` are ordinary resolvers, so you can
+override them, for example to turn introspection off:
+
+```ruby
+class AppResolvers < BookParser::Resolvers
+  def Query___schema obj, args, context
+    raise TinyGQL::ExecutionError, "Introspection is disabled"
+  end
+
+  def Query___type obj, args, context
+    nil
+  end
+end
+```
+
 ## Errors
 
 Errors come from two places.
@@ -512,7 +536,5 @@ They propagate out of `execute`, so bugs aren't hidden in the response.
 
 ## Not supported yet
 
-- Introspection.  `__typename` works, but `__schema` and `__type` return a
-  field error.
 - Subscriptions.
 - Locations in errors.

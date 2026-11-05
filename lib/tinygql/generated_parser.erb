@@ -348,7 +348,7 @@ end
 <%- input_enums.each do |enum| -%>
 
 <%= enum_constant enum.name %> = {
-<%- enum.values.each do |value| -%>
+<%- enum.values.each_key do |value| -%>
   <%= lit value %> => true,
 <%- end -%>
 }.freeze #: Hash[String, true]

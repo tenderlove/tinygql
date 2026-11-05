@@ -8,7 +8,7 @@ OUTPUT_TYPES = {
 <%- output_enums.each do |enum| -%>
 
 <%= enum_constant enum.name %> = {
-<%- enum.values.each do |value| -%>
+<%- enum.values.each_key do |value| -%>
   <%= lit value %> => true,
 <%- end -%>
 }.freeze #: Hash[String, true]
@@ -22,7 +22,7 @@ OUTPUT_TYPES = {
 }.freeze #: Hash[String, Integer]
 <%- end -%>
 
-<%- arguments_fields = object_types.flat_map { |type| type.fields.each_value.filter_map { |field| [type, field] unless field.arguments.empty? } } -%>
+<%- arguments_fields = object_types.flat_map { |type| resolved_fields(type).filter_map { |field| [type, field] unless field.arguments.empty? } } -%>
 <%- unless arguments_fields.empty? -%>
 
 # Field arguments, frozen, with a reader for each argument.  Missing
@@ -32,25 +32,78 @@ module Arguments
 <%- if i > 0 -%>
 
 <%- end -%>
-<%= value_class resolver_method(type.name, field.name), field.arguments, "  " %>
+<%= value_class arguments_class_name(type.name, field.name), field.arguments, "  " %>
 <%- end -%>
 end
 <%- end -%>
 
+# Introspection results for this schema, which __schema and __type
+# return.  See TinyGQL::Introspection
+module Introspection
+  Schema = TinyGQL::Introspection::Schema #: singleton(TinyGQL::Introspection::Schema)
+  Type = TinyGQL::Introspection::Type #: singleton(TinyGQL::Introspection::Type)
+  WrappingType = TinyGQL::Introspection::WrappingType #: singleton(TinyGQL::Introspection::WrappingType)
+  Field = TinyGQL::Introspection::Field #: singleton(TinyGQL::Introspection::Field)
+  InputValue = TinyGQL::Introspection::InputValue #: singleton(TinyGQL::Introspection::InputValue)
+  EnumValue = TinyGQL::Introspection::EnumValue #: singleton(TinyGQL::Introspection::EnumValue)
+  Directive = TinyGQL::Introspection::Directive #: singleton(TinyGQL::Introspection::Directive)
+  EMPTY = [].freeze #: Array[untyped]
+
+<%- schema.types.each_value do |type| -%>
+  <%= introspection_variable type.name %> = <%= introspection_type type %>
+<%- end -%>
+<%- defines = schema.types.each_value.map { introspection_define _1, "  " } -%>
+<%- directives = schema.directives.each_value.map { introspection_directive _1, "    " } -%>
+
+<%- @introspection_wrappers.each_value do |name, kind, inner| -%>
+  <%= name %> = WrappingType.new(<%= lit kind %>, <%= inner %>)
+<%- end -%>
+
+<%- defines.each do |define| -%>
+  <%= define %>
+<%- end -%>
+
+  # Types by name
+  TYPES = {
+<%- schema.types.each_key do |name| -%>
+    <%= lit name %> => <%= introspection_variable name %>,
+<%- end -%>
+  }.freeze #: Hash[String, TinyGQL::Introspection::Type]
+
+  DIRECTIVES = [
+<%- directives.each do |directive| -%>
+    <%= directive %>,
+<%- end -%>
+  ].freeze #: Array[TinyGQL::Introspection::Directive]
+
+<%- roots = %w{ query mutation subscription }.map { |op| schema.roots[op] ? introspection_variable(schema.roots[op]) : "nil" } -%>
+  SCHEMA = Schema.new(<%= lit_or_nil schema.description %>, TYPES.values, <%= roots.join(", ") %>, DIRECTIVES) #: TinyGQL::Introspection::Schema
+end
+
 # Resolves fields.  Each object type field has a method that calls the
 # field's name on the object, and each interface and union has a method
-# that raises NotImplementedError.  Subclass this and pass an instance to
-# `execute` with `resolvers:`
+# that raises NotImplementedError.  Introspection objects take their
+# fields' arguments, and __schema and __type return the Introspection
+# module's objects, so overriding them can turn introspection off.
+# Subclass this and pass an instance to `execute` with `resolvers:`
 class Resolvers
 <%- resolver_count = 0 -%>
 <%- object_types.each do |type| -%>
-<%- type.fields.each_value do |field| -%>
+<%- resolved_fields(type).each do |field| -%>
 <%- if (resolver_count += 1) > 1 -%>
 
 <%- end -%>
   #: (untyped, <%= field.arguments.empty? ? "nil" : arguments_class(type.name, field.name) %>, untyped) -> untyped
   def <%= resolver_method type.name, field.name %> obj, args, context
+<%- if field.equal?(SCHEMA_FIELD) -%>
+    Introspection::SCHEMA
+<%- elsif field.equal?(TYPE_FIELD) -%>
+    Introspection::TYPES[args.name]
+<%- elsif introspection_type?(type) && !field.arguments.empty? -%>
+    obj.<%= field.name %>(<%= field.arguments.map { "args.#{_1.name}" }.join(", ") %>)
+<%- else -%>
     obj.<%= field.name %>
+<%- end -%>
   end
 <%- end -%>
 <%- end -%>
@@ -152,9 +205,6 @@ class Executor < TinyGQL::Executor
     when <%= i %> # <%= field.name %>
 <%- if field.name == "__typename" -%>
       <%= lit type.name %>
-<%- elsif field.name.start_with?("__") -%>
-      type = <%= field_type_constant field.type %>
-      raise TinyGQL::ExecutionError, "Introspection isn't supported yet"
 <%- else -%>
       type = <%= field_type_constant field.type %>
       value = @resolvers.<%= resolver_method type.name, field.name %>(obj, <%= field.arguments.empty? ? "nil" : "#{field_arguments_method type, field}(nodes[0])" %>, @context)

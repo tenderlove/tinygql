@@ -203,10 +203,8 @@ module TinyGQL
       assert_data({ "__typename" => "Query", "post" => { "__typename" => "Post" } }, "{ __typename post(id: 1) { __typename } }")
     end
 
-    def test_introspection_is_not_supported
-      result = execute("{ __type(name: \"Post\") { name } post(id: 1) { id } }")
-      assert_equal({ "__type" => nil, "post" => { "id" => "1" } }, result["data"])
-      assert_equal [{ "message" => "Introspection isn't supported yet", "path" => ["__type"] }], result["errors"]
+    def test_introspection_with_other_fields
+      assert_data({ "__type" => { "name" => "Post" }, "post" => { "id" => "1" } }, "{ __type(name: \"Post\") { name } post(id: 1) { id } }")
     end
 
     def test_null_bubbles_to_nullable_parent
