@@ -215,10 +215,53 @@ module TinyGQL
       assert_equal ["User"], schema.possible_types("User")
     end
 
+    DIRECTIVE_PARSER = Generator.new(TinyGQL.parse_schema(<<~GRAPHQL)).parser_class
+      directive @tag(name: String) repeatable on FIELD | FRAGMENT_SPREAD
+      directive @auth on QUERY | MUTATION
+      directive @sample on VARIABLE_DEFINITION
+      directive @fragmentOnly on FRAGMENT_DEFINITION | INLINE_FRAGMENT
+      directive @typeOnly on OBJECT | FIELD_DEFINITION
+      #{SCHEMA}
+    GRAPHQL
+
+    def test_directives_in_their_locations
+      [
+        "query Q @auth { user(id: 1) { id @tag @tag(name: \"a\") ...F @tag } } fragment F on User @fragmentOnly { name }",
+        "mutation @auth { like(id: 1) { id } }",
+        "query($id: ID! @sample) { user(id: $id) { ... @fragmentOnly @include(if: true) { name } } }",
+        "{ user(id: 1) { id @skip(if: false) @include(if: true) } }",
+      ].each { |query| assert DIRECTIVE_PARSER.parse(query), query }
+    end
+
+    def test_unknown_directive
+      assert_error "Unknown directive @nope line: 2", "{ user(id: 1) {\n id @nope } }", DIRECTIVE_PARSER
+      assert_error "Unknown directive @tag", "{ user(id: 1) { id @tag } }"
+    end
+
+    def test_directive_locations
+      assert_error "Directive @include can't be used on QUERY line: 1", "query Q @include(if: true) { user(id: 1) { id } }"
+      assert_error "Directive @skip can't be used on MUTATION", "mutation @skip(if: false) { like(id: 1) { id } }"
+      assert_error "Directive @include can't be used on FRAGMENT_DEFINITION", "{ user(id: 1) { ...F } } fragment F on User @include(if: true) { id }"
+      assert_error "Directive @include can't be used on VARIABLE_DEFINITION", "query($id: ID! @include(if: true)) { user(id: $id) { id } }"
+      assert_error "Directive @auth can't be used on FIELD", "{ user(id: 1) { id @auth } }", DIRECTIVE_PARSER
+      assert_error "Directive @tag can't be used on INLINE_FRAGMENT", "{ user(id: 1) { ... @tag { id } } }", DIRECTIVE_PARSER
+      assert_error "Directive @fragmentOnly can't be used on FRAGMENT_SPREAD", "{ user(id: 1) { ...F @fragmentOnly } } fragment F on User { id }", DIRECTIVE_PARSER
+      # Type system locations never apply to queries
+      assert_error "Directive @typeOnly can't be used on FIELD", "{ user(id: 1) { id @typeOnly } }", DIRECTIVE_PARSER
+      assert_error "Directive @deprecated can't be used on FIELD", "{ user(id: 1) { id @deprecated } }"
+    end
+
+    def test_directives_once_per_location
+      assert_error "Directive @skip can only be used once in each location line: 2", "{ user(id: 1) {\n id @skip(if: true) @skip(if: false) } }"
+      assert_error "Directive @auth can only be used once in each location", "query @auth @auth { user(id: 1) { id } }", DIRECTIVE_PARSER
+      # Once on each of two fields is fine
+      assert PARSER.parse("{ user(id: 1) { id @skip(if: true) name @skip(if: true) } }")
+    end
+
     private
 
-    def assert_error message, query
-      error = assert_raises(ValidatingParser::ValidationError) { PARSER.parse query }
+    def assert_error message, query, parser = PARSER
+      error = assert_raises(ValidatingParser::ValidationError) { parser.parse query }
       assert_includes error.message, message
     end
   end

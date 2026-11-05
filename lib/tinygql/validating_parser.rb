@@ -173,12 +173,43 @@ module TinyGQL
           validation_error! "Invalid default value for $#{var.name}: #{e.message}", default_loc
         end
       end
-      directives = if at?(:DIR_SIGN); self.directives; end
+      directives = if at?(:DIR_SIGN); self.directives :VARIABLE_DEFINITION; end
 
       definition = Nodes::VariableDefinition.new(loc, var, type, default_value, directives)
       @scope.definitions[id] = definition
       @scope.defined |= 1 << id
       definition
+    end
+
+    # Bits for the locations directives can be used in a query document.
+    # Generated parsers compare them with the bits of each directive's
+    # locations
+    DIRECTIVE_LOCATION_BITS = {
+      QUERY: 1, MUTATION: 2, SUBSCRIPTION: 4, FIELD: 8, FRAGMENT_DEFINITION: 16,
+      FRAGMENT_SPREAD: 32, INLINE_FRAGMENT: 64, VARIABLE_DEFINITION: 128,
+    }.freeze #: Hash[Symbol, Integer]
+
+    # Directives at `location`, each one defined by the schema and allowed
+    # there.  A directive that isn't repeatable can only be used once in
+    # each location
+    #: (Symbol) -> Array[Nodes::Directive]
+    def directives location
+      bit = DIRECTIVE_LOCATION_BITS.fetch(location)
+      list = []
+      while at?(:DIR_SIGN)
+        directive = schema_directive(bit, location)
+        unless repeatable_directive?(directive.name)
+          i = 0
+          while i < list.length
+            if list[i].name == directive.name
+              validation_error! "Directive @#{directive.name} can only be used once in each location", directive.start
+            end
+            i += 1
+          end
+        end
+        list << directive
+      end
+      list.freeze
     end
 
     # Parses a value of `type`, a type node from a variable definition.
@@ -261,7 +292,7 @@ module TinyGQL
       when :ON, :DIR_SIGN, :LCURLY
         loc = pos
         type_condition = if at?(:ON); self.type_condition; end
-        directives = if at?(:DIR_SIGN); self.directives; end
+        directives = if at?(:DIR_SIGN); self.directives :INLINE_FRAGMENT; end
 
         type = if type_condition
           type = type_condition.named_type.name
@@ -840,6 +871,16 @@ module TinyGQL
       validation_error! "Field #{parent}.#{name} must have a selection set", loc
     end
 
+    #: (String, Integer) -> bot
+    def unknown_directive! name, loc
+      validation_error! "Unknown directive @#{name}", loc
+    end
+
+    #: (String, Symbol, Integer) -> bot
+    def misplaced_directive! name, location, loc
+      validation_error! "Directive @#{name} can't be used on #{location}", loc
+    end
+
     #: (String, String, String, Integer) -> bot
     def unknown_argument! name, field, parent, loc
       validation_error! "Unknown argument #{name} on #{parent}.#{field}", loc
@@ -1002,7 +1043,7 @@ module TinyGQL
     #: (Integer, String?, String, String) -> Nodes::Field
     def leaf_field loc, aliaz, name, parent
       no_arguments! name, parent
-      directives = if at?(:DIR_SIGN); self.directives; end
+      directives = if at?(:DIR_SIGN); self.directives :FIELD; end
       leaf_selection_set! name, parent, loc if at?(:LCURLY)
       Nodes::Field.new(loc, aliaz, name, nil, directives, nil, parent)
     end

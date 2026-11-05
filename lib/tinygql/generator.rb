@@ -161,6 +161,13 @@ module TinyGQL
       "FIELDS_FOR_#{type_name}"
     end
 
+    # The bits of the locations in a query document where `directive` can be
+    # used, from ValidatingParser::DIRECTIVE_LOCATION_BITS
+    #: (Schema::Directive) -> Integer
+    def directive_location_bits directive
+      directive.locations.sum { ValidatingParser::DIRECTIVE_LOCATION_BITS.fetch(_1.to_sym, 0) }
+    end
+
     # Registers an argument parsing method for `field` and returns its name.
     # Methods are numbered because type and field names joined together
     # could collide.

@@ -72,7 +72,45 @@ FIELD_TYPES = {
 <%- end -%>
 }.freeze #: Hash[String, Hash[String, TinyGQL::Nodes::NamedType | TinyGQL::Nodes::ListType | TinyGQL::Nodes::NotNullType]]
 
+# Maps directive names to branches in schema_directive
+DIRECTIVES = {
+<%- schema.directives.each_value.with_index do |directive, i| -%>
+  <%= lit directive.name %> => <%= i %>,
+<%- end -%>
+}.freeze #: Hash[String, Integer]
+
+# Directives that can be used more than once in the same location
+REPEATABLE_DIRECTIVES = {
+<%- schema.directives.each_value.select(&:repeatable).each do |directive| -%>
+  <%= lit directive.name %> => true,
+<%- end -%>
+}.freeze #: Hash[String, true]
+
 private
+
+#: (String) -> bool
+def repeatable_directive? name
+  REPEATABLE_DIRECTIVES.key?(name)
+end
+
+# Parses a directive at `location`, whose bit in DIRECTIVE_LOCATION_BITS is
+# `bit`
+#: (Integer, Symbol) -> TinyGQL::Nodes::Directive
+def schema_directive bit, location
+  loc = pos
+  expect_token :DIR_SIGN
+  name = self.name
+  case DIRECTIVES[name]
+<%- schema.directives.each_value.with_index do |directive, i| -%>
+  when <%= i %> # @<%= directive.name %>
+    misplaced_directive! name, location, loc if <%= directive_location_bits directive %> & bit == 0
+<%- end -%>
+  else
+    unknown_directive! name, loc
+  end
+  arguments = if at?(:LPAREN); self.arguments; end
+  TinyGQL::Nodes::Directive.new(loc, name, arguments)
+end
 
 #: (String) -> bool
 def composite_type? type
@@ -183,7 +221,7 @@ def <%= field_method type.name %>
 <%- end -%>
     end
 <%- end -%>
-    directives = if at?(:DIR_SIGN); self.directives; end
+    directives = if at?(:DIR_SIGN); self.directives :FIELD; end
 <%- if composite?(field.type_name) -%>
     missing_selection_set! name, <%= lit type.name %>, loc unless at?(:LCURLY)
     selection_set = <%= selection_set_method field.type_name %>
