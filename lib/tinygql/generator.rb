@@ -16,6 +16,7 @@ module TinyGQL
   class Generator
     # @rbs @body: String?
     # @rbs @argument_methods: Array[[String, Schema::Type, Schema::Field]]
+    # @rbs @directive_argument_methods: Array[[String, Schema::Directive]]
     # @rbs @value_methods: Hash[String, [String, Nodes::NamedType | Nodes::ListType | Nodes::NotNullType]]
     # @rbs @object_methods: Hash[String, [String, Schema::Type]]
     # @rbs @object_bits: Hash[String, Integer]?
@@ -30,7 +31,7 @@ module TinyGQL
     TYPE_FIELD = Schema::Field.new("__type", [Schema::InputValue.new("name", NON_NULL_STRING, nil)], Nodes::NamedType.new(0, "__Type")) #: Schema::Field
 
     # The tokens each built in scalar accepts, and the nodes they become
-    BUILTIN_LITERALS = Ractor.make_shareable({
+    BUILTIN_LITERALS = TinyGQL.make_shareable({
       "Int" => [[[:INT], "IntValue"]],
       "Float" => [[[:INT], "IntValue"], [[:FLOAT], "FloatValue"]],
       "String" => [[[:STRING], "StringValue"]],
@@ -81,6 +82,7 @@ module TinyGQL
     def body
       @body ||= begin
         @argument_methods = []
+        @directive_argument_methods = []
         @value_methods = {}
         @object_methods = {}
         @field_types = {}
@@ -159,6 +161,22 @@ module TinyGQL
     #: (String) -> String
     def fields_constant type_name
       "FIELDS_FOR_#{type_name}"
+    end
+
+    # The bits of the locations in a query document where `directive` can be
+    # used, from ValidatingParser::DIRECTIVE_LOCATION_BITS
+    #: (Schema::Directive) -> Integer
+    def directive_location_bits directive
+      directive.locations.sum { ValidatingParser::DIRECTIVE_LOCATION_BITS.fetch(_1.to_sym, 0) }
+    end
+
+    # Registers an argument parsing method for `directive` and returns its
+    # name
+    #: (Schema::Directive) -> String
+    def directive_argument_method directive
+      name = "directive_arguments_#{@directive_argument_methods.length}"
+      @directive_argument_methods << [name, directive]
+      name
     end
 
     # Registers an argument parsing method for `field` and returns its name.

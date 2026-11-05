@@ -308,10 +308,16 @@ module TinyGQL
     ESCAPE_OR_UTF_8 = /#{ESCAPES}|#{UTF_8}/ #: Regexp
     BLANK_LINE = /\A[ \t]*\z/ #: Regexp
 
+    ESCAPED_BLOCK_QUOTE = '\\"""' #: String
+
+    # Block strings have no escape sequences apart from \""", which is """.
+    # Backslashes are otherwise kept as they are, so "\n" stays a backslash
+    # and an n
     #: (String) -> String
     def emit_block(value)
-      value = trim_whitespace(value)
-      emit_string(value)
+      raise "Bad unicode escape in string" unless value.valid_encoding?
+      value = value.gsub(ESCAPED_BLOCK_QUOTE, BLOCK_QUOTE) if value.include?(ESCAPED_BLOCK_QUOTE)
+      trim_whitespace(value)
     end
 
     #: (String) -> String
@@ -329,8 +335,14 @@ module TinyGQL
       end
     end
 
+    # Line terminators other than LF.  Block strings split lines on CRLF, CR
+    # and LF, and join them with LF
+    CR_LINE_TERMINATOR = /\r\n?/ #: Regexp
+
     #: (String) -> String
     def trim_whitespace(str)
+      str = str.gsub(CR_LINE_TERMINATOR, "\n") if str.include?("\r")
+
       # Early return for the most common cases:
       if str == ""
         return "".dup

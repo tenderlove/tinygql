@@ -16,7 +16,7 @@ module TinyGQL
   # which a JSON scalar might accept, are passed as :LIST or :OBJECT and the
   # parsed node.  Variables aren't allowed inside those, so the whole
   # literal is known at parse time.  Parsers deeply freeze what custom
-  # scalars return with Ractor.make_shareable, so parsed documents can be
+  # scalars return with TinyGQL.make_shareable, so parsed documents can be
   # shared.
   #
   # coerce_value_X gets the decoded JSON value: a String, Integer, Float,

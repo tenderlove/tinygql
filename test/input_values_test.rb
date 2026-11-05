@@ -87,7 +87,7 @@ module TinyGQL
         def coerce_literal_DateTime(kind, text) = Time.utc(*text.split("-").map(&:to_i))
       end
       doc = PARSER.parse('query($id: ID!) { posts(ids: [$id, 2], filter: { after: "2026-01-02", status: DRAFT }) { id } }', scalars: scalars.new)
-      assert Ractor.shareable?(doc)
+      assert_shareable doc
     end
 
     def test_custom_scalars_get_the_kind_of_literal
@@ -109,8 +109,8 @@ module TinyGQL
       list, object = arguments(json.parse("{ a: f(j: [1, { b: 2 }]) b: f(j: { b: [3] }) }", scalars: scalars)).map(&:value)
       assert_equal [:LIST, "ListValue"], list.coerced
       assert_equal [:OBJECT, "ObjectValue"], object.coerced
-      assert Ractor.shareable?(list.coerced)
-      assert Ractor.shareable?(object.coerced)
+      assert_shareable list.coerced
+      assert_shareable object.coerced
 
       ["query($x: Int) { f(j: { b: $x }) }", "query($x: Int) { f(j: [1, [$x]]) }"].each do |query|
         error = assert_raises(ValidatingParser::ValidationError) { json.parse query, scalars: scalars }
@@ -229,6 +229,16 @@ module TinyGQL
       assert_error "Fragment F spreads itself line: 3", "{ ...F }\nfragment F on Query { ...G }\nfragment G on Query { ...F }"
       # Even when no operation uses them
       assert_error "Fragment F spreads itself", "{ posts(ids: 1) { id } } fragment F on Query { ...G } fragment G on Query { ...F }"
+    end
+
+    def test_fragments_must_be_used
+      assert_error "Fragment F is never used line: 2", "{ posts(ids: 1) { id } }\nfragment F on Query { posts(ids: 1) { id } }"
+      # Spread only by another fragment that nothing uses
+      assert_error "Fragment G is never used", "{ posts(ids: 1) { id } } fragment G on Query { ...F } fragment F on Query { posts(ids: 1) { id } }"
+      # Used through another fragment, and in another operation
+      assert PARSER.parse("query A { ...G } query B { ...H } fragment G on Query { ...F } fragment F on Query { posts(ids: 1) { id } } fragment H on Query { posts(ids: 2) { id } }")
+      # Used inside an inline fragment
+      assert PARSER.parse("{ ... on Query { ...F } } fragment F on Query { posts(ids: 1) { id } }")
     end
 
     def test_variable_definitions

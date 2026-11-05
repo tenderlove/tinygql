@@ -217,7 +217,7 @@ module TinyGQL
     end
 
     def test_introspection_data_is_shareable
-      assert Ractor.shareable?(PARSER::Introspection::SCHEMA)
+      assert_shareable PARSER::Introspection::SCHEMA
     end
 
     INTROSPECTION_QUERY = <<~GRAPHQL

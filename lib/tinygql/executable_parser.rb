@@ -87,7 +87,7 @@ module TinyGQL
       name = self.name
       tc = self.type_condition
       directives = if at?(:DIR_SIGN)
-        self.directives
+        self.directives :FRAGMENT_DEFINITION
       end
 
       Nodes::FragmentDefinition.new(loc, name, tc, directives, fragment_selection_set(name, tc))
@@ -107,7 +107,7 @@ module TinyGQL
         type = self.operation_type
         ident                = if name?; name; end
         variable_definitions = if at?(:LPAREN); self.variable_definitions; end
-        directives           = if at?(:DIR_SIGN); self.directives; end
+        directives           = if at?(:DIR_SIGN); self.directives(OPERATION_DIRECTIVE_LOCATIONS[type]); end
       end
 
       Nodes::OperationDefinition.new(
@@ -166,7 +166,7 @@ module TinyGQL
     def fragment_spread
       loc = pos
       name = self.name
-      directives = if at?(:DIR_SIGN); self.directives; end
+      directives = if at?(:DIR_SIGN); self.directives :FRAGMENT_SPREAD; end
 
       expect_token(:IDENTIFIER) if at?(:ON)
 
@@ -181,7 +181,7 @@ module TinyGQL
       end
 
       directives = if at?(:DIR_SIGN)
-        self.directives
+        self.directives :INLINE_FRAGMENT
       end
 
       Nodes::InlineFragment.new(loc, type_condition, directives, selection_set)
@@ -208,7 +208,7 @@ module TinyGQL
       end
 
       arguments = if at?(:LPAREN); self.arguments; end
-      directives = if at?(:DIR_SIGN); self.directives; end
+      directives = if at?(:DIR_SIGN); self.directives :FIELD; end
       selection_set = if at?(:LCURLY); self.selection_set; end
 
       Nodes::Field.new(loc, aliaz, name, arguments, directives, selection_set, nil)
@@ -229,8 +229,15 @@ module TinyGQL
       val
     end
 
-    #: () -> Array[Nodes::Directive]
-    def directives
+    # The directive location of each operation type
+    OPERATION_DIRECTIVE_LOCATIONS = {
+      "query" => :QUERY, "mutation" => :MUTATION, "subscription" => :SUBSCRIPTION,
+    }.freeze #: Hash[String, Symbol]
+
+    # `location` is where the directives are, like :FIELD.  Subclasses that
+    # know the schema check the directives are allowed there
+    #: (?Symbol?) -> Array[Nodes::Directive]
+    def directives location = nil
       list = []
       while at?(:DIR_SIGN)
         list << directive
@@ -289,7 +296,7 @@ module TinyGQL
       default_value = if at?(:EQUALS)
         self.default_value
       end
-      directives = if at?(:DIR_SIGN); self.directives; end
+      directives = if at?(:DIR_SIGN); self.directives :VARIABLE_DEFINITION; end
 
       Nodes::VariableDefinition.new(loc, var, type, default_value, directives)
     end

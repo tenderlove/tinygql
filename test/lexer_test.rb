@@ -39,6 +39,15 @@ module TinyGQL
       assert_equal [:STRING, 'Q\\n'], lexer.next_token
     end
 
+    def test_block_string_line_terminators
+      ["\r\n", "\r", "\n"].each do |eol|
+        lexer = Lexer.new %("""#{eol}  one#{eol}    two#{eol}""")
+        assert_equal [:STRING, "one\n  two"], lexer.next_token, eol.inspect
+      end
+      lexer = Lexer.new %("""a\r\nb\rc\nd""")
+      assert_equal [:STRING, "a\nb\nc\nd"], lexer.next_token
+    end
+
     def test_block_string_whitespace_only_boundary_lines
       lexer = Lexer.new %("""\n    \n  hello\n    \n  \t\n""")
       assert_equal [:STRING, "hello"], lexer.next_token
@@ -131,6 +140,20 @@ module TinyGQL
     def test_block_string_value
       lexer = Lexer.new %("""\n  hello\n    world\n""")
       assert_equal [:STRING, "hello\n  world"], lexer.next_token
+    end
+
+    def test_block_string_keeps_backslashes
+      lexer = Lexer.new '"""a\\nb""" """a\\qb""" """\\u0041""" """C:\\\\x"""'
+      assert_equal [:STRING, 'a\\nb'], lexer.next_token
+      assert_equal [:STRING, 'a\\qb'], lexer.next_token
+      assert_equal [:STRING, '\\u0041'], lexer.next_token
+      assert_equal [:STRING, 'C:\\\\x'], lexer.next_token
+    end
+
+    def test_block_string_escaped_quotes
+      lexer = Lexer.new '"""a \\""" b""" """\\"""\\""" x"""'
+      assert_equal [:STRING, 'a """ b'], lexer.next_token
+      assert_equal [:STRING, '"""""" x'], lexer.next_token
     end
 
     def test_bad_unicode_escape
