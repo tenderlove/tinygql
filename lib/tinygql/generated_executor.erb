@@ -121,7 +121,7 @@ end
 class Executor < TinyGQL::Executor
   private
 
-  #: (String?, untyped, Array[TinyGQL::Nodes::OperationDefinition]) -> Hash[String, untyped]
+  #: (String?, untyped, Array[TinyGQL::Nodes::OperationDefinition]) -> void
   def execute_operation type, root, nodes
     case type
     when nil, "query" then <%= execute_method schema.roots["query"] %> root, nodes, nil
@@ -142,19 +142,38 @@ class Executor < TinyGQL::Executor
     possible && bit ? possible[bit] == 1 : false
   end
 
-  #: (String, Array[TinyGQL::Nodes::Field], untyped, path?, String | Integer, Hash[String, untyped] | Array[untyped], bool) -> untyped
-  def complete_named type, nodes, value, path, key, container, nullable
+  # Writes a value of the named type `type`.  Objects get a position in
+  # the response, for errors in Lazies under them
+  #: (String, Array[TinyGQL::Nodes::Field], untyped, path?, String | Integer, bool) -> void
+  def complete_named type, nodes, value, path, key, nullable
     case OUTPUT_TYPES[type]
 <%- output_types.each_with_index do |type, i| -%>
 <%- case type.kind -%>
 <%- when :scalar -%>
-    when <%= i %> then @scalars.coerce_result_<%= type.name %>(value)
-<%- when :enum -%>
-    when <%= i %> then complete_enum <%= enum_constant type.name %>, <%= lit type.name %>, value
-<%- when :object -%>
-    when <%= i %> then <%= execute_method type.name %> value, nodes, [path, key, container, nullable]
+<%- if %w[String ID].include?(type.name) -%>
+    when <%= i %>
+      value = @scalars.coerce_result_<%= type.name %>(value)
+      if String === value && !JSON_ESCAPE.match?(value) && value.valid_encoding? && (value.encoding == Encoding::UTF_8 || value.ascii_only?)
+        @buf << '"' << value << '"'
+      else
+        complete_scalar(value, nodes, nullable)
+      end
 <%- else -%>
-    when <%= i %> then execute_abstract <%= lit type.name %>, @resolvers.resolve_type_<%= type.name %>(value, @context), value, nodes, [path, key, container, nullable]
+    when <%= i %> then complete_scalar @scalars.coerce_result_<%= type.name %>(value), nodes, nullable
+<%- end -%>
+<%- when :enum -%>
+    when <%= i %> then @buf << '"' << complete_enum(<%= enum_constant type.name %>, <%= lit type.name %>, value) << '"'
+<%- when :object -%>
+    when <%= i %>
+      node = [path, key, nullable, @segment, @buf.bytesize, nil]
+      <%= execute_method type.name %> value, nodes, node
+      node[5] = @buf.bytesize
+<%- else -%>
+    when <%= i %>
+      resolved = @resolvers.resolve_type_<%= type.name %>(value, @context)
+      node = [path, key, nullable, @segment, @buf.bytesize, nil]
+      execute_abstract <%= lit type.name %>, resolved, value, nodes, node
+      node[5] = @buf.bytesize
 <%- end -%>
 <%- end -%>
     end
@@ -163,7 +182,7 @@ class Executor < TinyGQL::Executor
 
   # Executes an object of `type`, the object type an interface or union
   # resolved to
-  #: (String, String, untyped, Array[TinyGQL::Nodes::Field], path) -> Hash[String, untyped]
+  #: (String, String, untyped, Array[TinyGQL::Nodes::Field], path) -> void
   def execute_abstract abstract, type, value, nodes, path
     unless type.is_a?(String) && fragment_applies?(abstract, type)
       raise TinyGQL::ExecutionError, "Abstract type #{abstract} must resolve to one of its object types, got #{type.inspect}"
@@ -180,40 +199,41 @@ class Executor < TinyGQL::Executor
 <%- end -%>
 <%- object_types.each do |type| -%>
 
-  #: (untyped, Array[TinyGQL::Nodes::Field | TinyGQL::Nodes::OperationDefinition], path?) -> Hash[String, untyped]
+  #: (untyped, Array[TinyGQL::Nodes::Field | TinyGQL::Nodes::OperationDefinition], path?) -> void
   def <%= execute_method type.name %> obj, nodes, path
     collected = collect_fields <%= lit type.name %>, nodes
-    result = {}
+    buf = @buf
     i = 0
     while i < collected.length
-      key = collected[i]
-      result[key] = <%= execute_field_method type.name %> obj, collected[i + 1], path, key, result
+      buf << collected[i + 2]
+      <%= execute_field_method type.name %> obj, collected[i + 1], path, collected[i]
 <%- if type.name == schema.roots["mutation"] -%>
       # Mutation fields run one at a time, Lazies and all
       drain
 <%- end -%>
-      i += 2
+      i += 3
     end
-    result
+    buf << (i == 0 ? "{}" : "}")
   end
 
-  #: (untyped, Array[TinyGQL::Nodes::Field], path?, String, Hash[String, untyped]) -> untyped
-  def <%= execute_field_method type.name %> obj, nodes, path, key, result
+  #: (untyped, Array[TinyGQL::Nodes::Field], path?, String) -> void
+  def <%= execute_field_method type.name %> obj, nodes, path, key
+    start = @buf.bytesize
     type = nil
     case <%= execute_fields_constant type.name %>[nodes[0].name]
 <%- selectable_fields(type).each_with_index do |field, i| -%>
     when <%= i %> # <%= field.name %>
 <%- if field.name == "__typename" -%>
-      <%= lit type.name %>
+      @buf << <%= lit JSON.generate(type.name) %>
 <%- else -%>
       type = <%= field_type_constant field.type %>
       value = @resolvers.<%= resolver_method type.name, field.name %>(obj, <%= field.arguments.empty? ? "nil" : "#{field_arguments_method type, field}(nodes[0])" %>, @context)
-      complete_value type, nodes, value, path, key, result
+      complete_value type, nodes, value, path, key
 <%- end -%>
 <%- end -%>
     end
   rescue TinyGQL::ExecutionError, TinyGQL::Scalars::InvalidValue => e
-    field_error e, type, path, key
+    field_error e, type, path, key, start
   end
 <%- end -%>
 <%- @field_arguments.each do |field, (method, type)| -%>

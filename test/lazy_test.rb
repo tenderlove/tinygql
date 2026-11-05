@@ -1,6 +1,7 @@
 require "helper"
 require "tinygql"
 require "tinygql/generator"
+require "stringio"
 
 module TinyGQL
   class LazyTest < Test
@@ -162,6 +163,43 @@ module TinyGQL
       assert_equal [{ "message" => "Cannot return null for non-nullable field Book.author", "path" => ["requiredBook", "author"] }], result["errors"]
     end
 
+    def test_lazies_are_spliced_into_the_json
+      doc = PARSER.parse("{ books { title author { name } reviewer { name } } }")
+      json = PARSER.execute(doc, [], resolvers: Resolvers.new(@db), context: Loaders.new(AuthorLoader.new(@db), BooksByAuthorLoader.new(@db)))
+      assert_equal '{"data":{"books":[{"title":"Earthsea","author":{"name":"Ursula"},"reviewer":{"name":"Mary"}},' \
+        '{"title":"SPQR","author":{"name":"Mary"},"reviewer":null},{"title":"Lathe","author":{"name":"Ursula"},"reviewer":null}]}}', json
+    end
+
+    def test_lazies_are_written_to_out
+      doc = PARSER.parse("{ books { author { name books { title } } } }")
+      out = StringIO.new
+      loaders = Loaders.new(AuthorLoader.new(@db), BooksByAuthorLoader.new(@db))
+      assert_same out, PARSER.execute(doc, [], resolvers: Resolvers.new(@db), context: loaders, out: out)
+      assert_equal execute("{ books { author { name books { title } } } }"), JSON.parse(out.string)
+    end
+
+    def test_nulls_from_lazies_replace_written_json
+      @db.books[1].author_id = "nope"
+      doc = PARSER.parse("{ books { id author { name } } }")
+      json = PARSER.execute(doc, [], resolvers: Resolvers.new(@db), context: Loaders.new(AuthorLoader.new(@db), nil))
+      assert_equal '{"data":{"books":[{"id":"b1","author":{"name":"Ursula"}},null,{"id":"b3","author":{"name":"Ursula"}}]},' \
+        '"errors":[{"message":"Cannot return null for non-nullable field Book.author","path":["books",1,"author"]}]}', json
+    end
+
+    def test_lazies_inside_json_that_was_cut
+      # Book.title is non-null, so a book without one is null, along with the
+      # author Lazy written before the title
+      @db.books[0].title = nil
+      result = execute("{ books { author { name } title } }")
+      assert_equal [nil, { "author" => { "name" => "Mary" }, "title" => "SPQR" }, { "author" => { "name" => "Ursula" }, "title" => "Lathe" }], result["data"]["books"]
+      assert_equal [{ "message" => "Cannot return null for non-nullable field Book.title", "path" => ["books", 0, "title"] }], result["errors"]
+      # Its Lazy still loads, and its error is still reported
+      @db.books[0].author_id = "nope"
+      result = execute("{ books { author { name } title } }")
+      assert_equal [nil, { "author" => { "name" => "Mary" }, "title" => "SPQR" }, { "author" => { "name" => "Ursula" }, "title" => "Lathe" }], result["data"]["books"]
+      assert_equal [["books", 0, "title"], ["books", 0, "author"]], result["errors"].map { _1["path"] }
+    end
+
     def test_invalid_lazy_values
       resolvers = Class.new(Resolvers) do
         def Book_title(book, args, context) = context.authors.load(book.author_id)
@@ -243,7 +281,7 @@ module TinyGQL
 
     def execute query, resolvers: Resolvers.new(@db), loaders: Loaders.new(AuthorLoader.new(@db), BooksByAuthorLoader.new(@db))
       doc = PARSER.parse(query)
-      PARSER.execute(doc, PARSER.coerce(doc, {}), resolvers: resolvers, context: loaders)
+      JSON.parse(PARSER.execute(doc, PARSER.coerce(doc, {}), resolvers: resolvers, context: loaders))
     end
   end
 end
