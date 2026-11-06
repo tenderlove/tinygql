@@ -16,6 +16,10 @@ module TinyGQL
     end
   end
 
+  # What `analyze` measures about an operation: its cost, and the depth of
+  # its deepest field.  Root fields are at depth 1
+  Analysis = Struct.new(:cost, :depth)
+
   # Executes operations in documents parsed by a generated parser.
   # Generated parsers define a subclass, `MyParser::Executor`, with methods
   # for each of the schema's output types.  Use it through `MyParser.execute`.
@@ -78,19 +82,27 @@ module TinyGQL
       @lazies = []
     end
 
+    # Measures operation `op` in `doc` without executing it, and returns an
+    # Analysis.  Each field's cost comes from the method for it on `costs`,
+    # a generated Costs instance, which gets the field's arguments, the cost
+    # of its selections, and the context.  An interface or union costs as
+    # much as its most expensive object type.  Like execution, fields with
+    # the same response key are counted once, and @skip and @include are
+    # applied
+    #: (Nodes::Document, String?, untyped) -> Analysis
+    def analyze doc, op, costs
+      operation = prepare(doc, op)
+      @costs = costs
+      @depth = 0
+      cost = analyze_operation(operation.type, [operation].freeze)
+      Analysis.new(cost, @depth).freeze
+    end
+
     # Executes operation `op` in `doc` and returns the response, a Hash
     # with "data" and, if there were errors, "errors"
     #: (Nodes::Document, String?, untyped) -> Hash[String, untyped]
     def execute doc, op, root
-      operation = @inputs.operation(doc, op)
-
-      definitions = doc.definitions
-      i = 0
-      while i < definitions.length
-        definition = definitions[i]
-        @fragments[definition.fragment_name] = definition if definition.fragment_definition?
-        i += 1
-      end
+      operation = prepare(doc, op)
 
       data = begin
         data = execute_operation(operation.type, root, [operation].freeze)
@@ -116,6 +128,20 @@ module TinyGQL
     end
 
     private
+
+    # The operation to run, with the document's fragments indexed
+    #: (Nodes::Document, String?) -> Nodes::OperationDefinition
+    def prepare doc, op
+      operation = @inputs.operation(doc, op)
+      definitions = doc.definitions
+      i = 0
+      while i < definitions.length
+        definition = definitions[i]
+        @fragments[definition.fragment_name] = definition if definition.fragment_definition?
+        i += 1
+      end
+      operation
+    end
 
     # The fields to execute on an object of `type` for `nodes`, the field
     # nodes that share a response key, or the operation.  Returns a flat

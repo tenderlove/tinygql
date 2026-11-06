@@ -104,6 +104,16 @@ module TinyGQL
       self::Executor.new(resolvers, scalars, self::Inputs.new(scalars), variables, context).execute(doc, op, root)
     end
 
+    # Measures operation `op` in `doc`, a document this parser parsed,
+    # without executing it, and returns a TinyGQL::Analysis with its cost
+    # and depth.  `variables` come from `coerce`.  Each field's cost comes
+    # from `costs`, an instance of this parser's Costs class or a subclass.
+    # See TinyGQL::Executor#analyze
+    #: (Nodes::Document, Array[untyped], ?op: String?, ?costs: untyped, ?context: untyped, ?scalars: Scalars) -> Analysis
+    def self.analyze doc, variables, op: nil, costs: self::Costs.new, context: nil, scalars: self::Scalars.new
+      self::Executor.new(nil, scalars, self::Inputs.new(scalars), variables, context).analyze(doc, op, costs)
+    end
+
     #: (String, ?scalars: Scalars) -> void
     def initialize doc, scalars: self.class::Scalars.new
       super(doc)

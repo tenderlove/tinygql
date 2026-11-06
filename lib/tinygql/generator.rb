@@ -377,6 +377,23 @@ module TinyGQL
       "execute_#{type_name}"
     end
 
+    # The weight `analyze` charges for `field` by default: its @cost, its
+    # type's @cost, or 1 for composite types and 0 for leaves
+    #: (Schema::Field) -> Numeric
+    def field_weight field
+      field.cost || schema[field.type_name].cost || (composite?(field.type_name) ? 1 : 0)
+    end
+
+    #: (String) -> String
+    def analyze_method type_name
+      "analyze_#{type_name}"
+    end
+
+    #: (String) -> String
+    def analyze_field_method type_name
+      "analyze_field_#{type_name}"
+    end
+
     #: (String) -> String
     def execute_field_method type_name
       "execute_field_#{type_name}"

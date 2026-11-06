@@ -80,6 +80,42 @@ module Introspection
   SCHEMA = Schema.new(<%= lit_or_nil schema.description %>, TYPES.values, <%= roots.join(", ") %>, DIRECTIVES) #: TinyGQL::Introspection::Schema
 end
 
+# Costs of fields, for `analyze`.  Each object type field has a method that
+# gets the field's arguments (nil for fields without any), the cost of its
+# selections, and the context passed to `analyze`, and returns the field's
+# cost: its weight plus the cost of its selections.  A field's weight comes
+# from its @cost, or else its type's @cost, or else it's 1 for fields of
+# object, interface and union types and 0 for the others.  Subclass this
+# and pass an instance to `analyze` with `costs:` to charge fields
+# differently.  `__typename` costs 0, unless `__typename` is overridden
+class Costs
+  # The cost of `__typename` on an object of type `type`
+  #: (String, untyped) -> Numeric
+  def __typename type, context
+    0
+  end
+
+<%- cost_count = 0 -%>
+<%- object_types.each do |type| -%>
+<%- resolved_fields(type).each do |field| -%>
+<%- if (cost_count += 1) > 1 -%>
+
+<%- end -%>
+<%- weight = field_weight field -%>
+  #: (<%= field.arguments.empty? ? "nil" : arguments_class(type.name, field.name) %>, Numeric, untyped) -> Numeric
+  def <%= resolver_method type.name, field.name %> args, selections, context
+<%- if !composite?(field.type_name) -%>
+    <%= weight %>
+<%- elsif weight == 0 -%>
+    selections
+<%- else -%>
+    <%= weight %> + selections
+<%- end -%>
+  end
+<%- end -%>
+<%- end -%>
+end
+
 # Resolves fields.  Each object type field has a method that calls the
 # field's name on the object, and each interface and union has a method
 # that raises NotImplementedError.  Introspection objects take their
@@ -216,6 +252,68 @@ class Executor < TinyGQL::Executor
     field_error e, type, path, key
   end
 <%- end -%>
+<%- object_types.each do |type| -%>
+
+  # The cost of the fields `nodes` select on an object of <%= type.name %>, at
+  # depth `depth`
+  #: (Array[TinyGQL::Nodes::Field | TinyGQL::Nodes::OperationDefinition], Integer) -> Numeric
+  def <%= analyze_method type.name %> nodes, depth
+    collected = collect_fields <%= lit type.name %>, nodes
+    @depth = depth if depth > @depth && !collected.empty?
+    cost = 0
+    i = 0
+    while i < collected.length
+      cost += <%= analyze_field_method type.name %> collected[i + 1], depth
+      i += 2
+    end
+    cost
+  end
+
+  #: (Array[TinyGQL::Nodes::Field], Integer) -> Numeric
+  def <%= analyze_field_method type.name %> nodes, depth
+    case <%= execute_fields_constant type.name %>[nodes[0].name]
+<%- selectable_fields(type).each_with_index do |field, i| -%>
+    when <%= i %> # <%= field.name %>
+<%- if field.name == "__typename" -%>
+      @costs.__typename(<%= lit type.name %>, @context)
+<%- next -%>
+<%- end -%>
+<%- args = field.arguments.empty? ? "nil" : "#{field_arguments_method type, field}(nodes[0])" -%>
+<%- named = schema[field.type_name] -%>
+<%- if !named.composite? -%>
+      @costs.<%= resolver_method type.name, field.name %>(<%= args %>, 0, @context)
+<%- elsif named.kind == :object -%>
+      @costs.<%= resolver_method type.name, field.name %>(<%= args %>, <%= analyze_method named.name %>(nodes, depth + 1), @context)
+<%- else -%>
+<%- possible = schema.possible_types(named.name) -%>
+<%- if possible.empty? -%>
+      @costs.<%= resolver_method type.name, field.name %>(<%= args %>, 0, @context)
+<%- else -%>
+      # An abstract type costs as much as its most expensive object type
+      selections = <%= analyze_method possible.first %>(nodes, depth + 1)
+<%- possible.drop(1).each do |name| -%>
+      c = <%= analyze_method name %>(nodes, depth + 1)
+      selections = c if c > selections
+<%- end -%>
+      @costs.<%= resolver_method type.name, field.name %>(<%= args %>, selections, @context)
+<%- end -%>
+<%- end -%>
+<%- end -%>
+    end
+  end
+<%- end -%>
+
+  #: (String?, Array[TinyGQL::Nodes::OperationDefinition]) -> Numeric
+  def analyze_operation type, nodes
+    case type
+    when nil, "query" then <%= analyze_method schema.roots["query"] %> nodes, 1
+<%- if schema.roots["mutation"] -%>
+    when "mutation" then <%= analyze_method schema.roots["mutation"] %> nodes, 1
+<%- end -%>
+    else
+      raise TinyGQL::Inputs::Error, "#{type} operations aren't supported"
+    end
+  end
 <%- @field_arguments.each do |field, (method, type)| -%>
 <%- arguments = field.arguments -%>
 
