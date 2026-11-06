@@ -1,4 +1,5 @@
 require "helper"
+require "stringio"
 require "tinygql"
 require "tinygql/generator"
 
@@ -314,9 +315,37 @@ module TinyGQL
       assert_kind_of PARSER::InputObjects::NewPost, @resolvers.calls[0].post
     end
 
+    def test_writes_json
+      doc = PARSER.parse('{ a: post(id: 1) { title id } post(id: 2) { id @skip(if: true) } }')
+      resolvers = Class.new(PARSER::Resolvers) do
+        def Query_post(obj, args, context) = Struct.new(:id, :title).new(args.id, "Say \"hi\"\\\n")
+      end.new
+      assert_equal '{"data":{"a":{"title":"Say \\"hi\\"\\\\\\n","id":"1"},"post":{}}}', PARSER.execute(doc, [], resolvers: resolvers)
+    end
+
+    def test_writes_to_out
+      doc = PARSER.parse("{ post(id: 1) { id title } }")
+      expected = PARSER.execute(doc, [], resolvers: @resolvers)
+      out = +"prefix "
+      assert_same out, PARSER.execute(doc, [], resolvers: @resolvers, out: out)
+      assert_equal "prefix #{expected}", out
+      io = StringIO.new
+      assert_same io, PARSER.execute(doc, [], resolvers: @resolvers, out: io)
+      assert_equal expected, io.string
+    end
+
+    def test_nulls_replace_written_json
+      resolvers = Class.new(PARSER::Resolvers) do
+        def Query_post(obj, args, context) = Struct.new(:id, :title).new(args.id == "2" ? nil : args.id, "t")
+      end.new
+      doc = PARSER.parse('{ a: post(id: 1) { title id } b: post(id: 2) { title id } }')
+      assert_equal '{"data":{"a":{"title":"t","id":"1"},"b":null},' \
+        '"errors":[{"message":"Cannot return null for non-nullable field Post.id","path":["b","id"]}]}', PARSER.execute(doc, [], resolvers: resolvers)
+    end
+
     def test_operation_names
       doc = PARSER.parse("query A { post(id: 1) { id } } query B { post(id: 2) { id } }")
-      result = PARSER.execute(doc, PARSER.coerce(doc, {}, op: "B"), resolvers: @resolvers, op: "B")
+      result = JSON.parse(PARSER.execute(doc, PARSER.coerce(doc, {}, op: "B"), resolvers: @resolvers, op: "B"))
       assert_equal({ "data" => { "post" => { "id" => "2" } } }, result)
     end
 
@@ -326,7 +355,7 @@ module TinyGQL
       end.new
       root = Struct.new(:post).new(@posts[0])
       doc = PARSER.parse("{ post(id: 1) { id title } }")
-      assert_equal({ "data" => { "post" => { "id" => "1", "title" => "One" } } }, PARSER.execute(doc, [], resolvers: resolvers, root: root))
+      assert_equal({ "data" => { "post" => { "id" => "1", "title" => "One" } } }, JSON.parse(PARSER.execute(doc, [], resolvers: resolvers, root: root)))
     end
 
     def test_input_names_replace_object_methods
@@ -335,7 +364,7 @@ module TinyGQL
         def Query_f(obj, args, context) = "#{args.i.method} #{args.i.hash} #{args.class}"
       end.new
       doc = parser.parse('{ f(i: { method: "GET", hash: 1 }, class: 2) }')
-      assert_equal({ "data" => { "f" => "GET 1 2" } }, parser.execute(doc, [], resolvers: resolvers))
+      assert_equal({ "data" => { "f" => "GET 1 2" } }, JSON.parse(parser.execute(doc, [], resolvers: resolvers)))
     end
 
     def test_input_class_names_must_be_constants
@@ -351,7 +380,7 @@ module TinyGQL
         def Query_f(obj, args, context) = args.end + args.if.in.sum + args.if.not.in.sum
       end.new
       doc = parser.parse("{ f(end: 1, if: { in: [2, 3], not: { in: 4 } }) }")
-      assert_equal({ "data" => { "f" => 10 } }, parser.execute(doc, [], resolvers: resolvers))
+      assert_equal({ "data" => { "f" => 10 } }, JSON.parse(parser.execute(doc, [], resolvers: resolvers)))
     end
 
     def test_resolver_names_must_not_collide
@@ -366,7 +395,7 @@ module TinyGQL
     def execute query, variables = {}, resolvers: @resolvers, context: nil
       doc = PARSER.parse(query, scalars: TestScalars.new)
       vars = PARSER.coerce(doc, variables, scalars: TestScalars.new)
-      PARSER.execute(doc, vars, resolvers: resolvers, context: context, scalars: TestScalars.new)
+      JSON.parse(PARSER.execute(doc, vars, resolvers: resolvers, context: context, scalars: TestScalars.new))
     end
 
     def assert_data data, query, variables = {}, context: nil

@@ -255,7 +255,7 @@ module TinyGQL
 
     def run_query query, resolvers = PARSER::Resolvers.new
       doc = PARSER.parse(query)
-      PARSER.execute(doc, PARSER.coerce(doc, {}), resolvers: resolvers, context: nil)
+      JSON.parse(PARSER.execute(doc, PARSER.coerce(doc, {}), resolvers: resolvers, context: nil))
     end
 
     def execute query

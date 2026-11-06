@@ -332,7 +332,7 @@ Some details about lazies:
   `Author_books` needs `first`, so its key is `[author.id, args.first]`.
 - **Errors:** if `perform` raises `TinyGQL::ExecutionError`, every field
   waiting on that batch gets the error.  Nulls bubble up as they do for
-  other values, even though the parent objects were already built.  If
+  other values, even though the parent objects were already written.  If
   `perform` doesn't fulfill a key, `TinyGQL::Loader::BrokenError` is
   raised.  That's a bug in the loader, so it isn't caught.
 - **Mutations:** each mutation field's lazies are loaded before the next
@@ -356,12 +356,24 @@ def handle body, context = RequestContext.new
 rescue TinyGQL::ExecutableParser::UnexpectedToken,
        TinyGQL::ValidatingParser::ValidationError,
        TinyGQL::Inputs::Error => e
-  { "errors" => [{ "message" => e.message }] }
+  JSON.generate({ "errors" => [{ "message" => e.message }] })
 end
 ```
 
-`execute` returns a Hash with `"data"`, and with `"errors"` if any field
-failed.  Turn it into the response with `JSON.generate`.
+`execute` returns the response as a JSON String, an object with `"data"`,
+and with `"errors"` if any field failed.  The executor writes the JSON as it
+goes, without building a Hash of the result first.
+
+To write the response somewhere else, pass `out:`, anything with `<<`,
+like an IO, a StringIO or a String to append to.  `execute` returns `out`:
+
+```ruby
+BookParser.execute(doc, variables, resolvers: RESOLVERS, scalars: SCALARS, out: socket)
+```
+
+The response is written to `out` once execution is done, not while it
+runs: a null in a non-null field can still replace JSON that was already
+written, up to the nearest field that can be null, or all of `"data"`.
 
 Pass the same Scalars instance to `parse`, `coerce`, and `execute`.
 `execute` also takes `root:`, the object passed to root field resolvers.
