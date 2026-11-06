@@ -460,6 +460,69 @@ non-null, so the null goes up to `data`:
 }
 ```
 
+## Cost and depth
+
+`analyze` measures an operation without executing it, so you can refuse
+queries that are too expensive or too deep before any resolver runs.  It
+takes the same coerced variables as `execute`:
+
+```ruby
+doc = BookParser.parse(request["query"], scalars: SCALARS)
+variables = BookParser.coerce(doc, request["variables"], op: op, scalars: SCALARS)
+analysis = BookParser.analyze(doc, variables, op: op, scalars: SCALARS)
+analysis.cost  # => 3
+analysis.depth # => 4
+```
+
+**Depth** is the depth of the deepest field.  Root fields are at depth 1.
+
+**Cost** adds up a cost for every field the operation selects.  Like
+execution, fields with the same response key count once, and `@skip` and
+`@include` are applied.  A field's cost is its weight plus the cost of its
+selections, and an interface or union costs as much as its most
+expensive object type.  By default, fields of object, interface and union
+types weigh 1, and other fields weigh 0, so `{ books { title author { name } } }`
+costs 2.
+
+Give fields and types other weights with `@cost`, from the [GraphQL cost
+directive specification](https://ibm.github.io/graphql-specs/cost-spec.html).
+The weight is a String, so it can have a fraction:
+
+```graphql
+directive @cost(weight: String!) on FIELD_DEFINITION | OBJECT | SCALAR | ENUM
+
+type Book {
+  title: String!
+  related: [Book!]! @cost(weight: "5")
+  author: Author!
+}
+
+type Author @cost(weight: "2") {
+  name: String!
+}
+```
+
+A field's own `@cost` wins, then its type's.  Only weights on fields and
+types are supported; `@cost` on arguments and `@listSize` aren't yet.
+
+For rules that depend on arguments, like charging lists by their size,
+subclass the generated `Costs` class.  It has a method for every field,
+named like the resolver, that gets the field's arguments, the cost of its
+selections, and the context passed to `analyze`, and returns the field's
+cost.  `__typename` costs 0, and `Costs#__typename(type, context)` changes
+that:
+
+```ruby
+class AppCosts < BookParser::Costs
+  # Charge for every book `first:` asks for
+  def Query_books args, selections, context
+    1 + selections * args.first
+  end
+end
+
+BookParser.analyze(doc, variables, costs: AppCosts.new, scalars: SCALARS)
+```
+
 ## Introspection
 
 `__schema` and `__type` work like other fields.  The generator builds the

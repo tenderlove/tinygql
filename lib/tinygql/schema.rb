@@ -11,8 +11,9 @@ module TinyGQL
     # `kind` is one of :object, :interface, :union, :scalar, :enum, or :input.
     # `fields` maps names to Fields for objects and interfaces, and to
     # InputValues for input objects.  `values` maps an enum's value names to
-    # EnumValues.  `specified_by_url` comes from a scalar's @specifiedBy, and
-    # `one_of` is whether an input object has @oneOf
+    # EnumValues.  `specified_by_url` comes from a scalar's @specifiedBy,
+    # `one_of` is whether an input object has @oneOf, and `cost` is the
+    # weight from the type's @cost, if it has one
     class Type
       attr_reader :kind #: Symbol
       attr_reader :name #: String
@@ -23,9 +24,10 @@ module TinyGQL
       attr_reader :description #: String?
       attr_reader :specified_by_url #: String?
       attr_reader :one_of #: bool
+      attr_reader :cost #: Numeric?
 
-      #: (Symbol, String, Hash[String, Field | InputValue], Array[String], Array[String], Hash[String, EnumValue], ?String?, ?String?, ?bool) -> void
-      def initialize kind, name, fields, interfaces, members, values, description = nil, specified_by_url = nil, one_of = false
+      #: (Symbol, String, Hash[String, Field | InputValue], Array[String], Array[String], Hash[String, EnumValue], ?String?, ?String?, ?bool, ?Numeric?) -> void
+      def initialize kind, name, fields, interfaces, members, values, description = nil, specified_by_url = nil, one_of = false, cost = nil
         @kind = kind
         @name = name
         @fields = fields
@@ -35,6 +37,7 @@ module TinyGQL
         @description = description
         @specified_by_url = specified_by_url
         @one_of = one_of
+        @cost = cost
       end
 
       #: () -> bool
@@ -46,21 +49,24 @@ module TinyGQL
 
     # `type` is the field's type node, like `[User!]!`.  `type_name` is the
     # named type with list and non-null wrappers removed.
-    # `deprecation_reason` is nil unless the field has @deprecated
+    # `deprecation_reason` is nil unless the field has @deprecated, and
+    # `cost` is the weight from the field's @cost, if it has one
     class Field
       attr_reader :name #: String
       attr_reader :arguments #: Array[InputValue]
       attr_reader :type #: Nodes::NamedType | Nodes::ListType | Nodes::NotNullType
       attr_reader :description #: String?
       attr_reader :deprecation_reason #: String?
+      attr_reader :cost #: Numeric?
 
-      #: (String, Array[InputValue], Nodes::NamedType | Nodes::ListType | Nodes::NotNullType, ?String?, ?String?) -> void
-      def initialize name, arguments, type, description = nil, deprecation_reason = nil
+      #: (String, Array[InputValue], Nodes::NamedType | Nodes::ListType | Nodes::NotNullType, ?String?, ?String?, ?Numeric?) -> void
+      def initialize name, arguments, type, description = nil, deprecation_reason = nil, cost = nil
         @name = name
         @arguments = arguments
         @type = type
         @description = description
         @deprecation_reason = deprecation_reason
+        @cost = cost
       end
 
       #: () -> String
@@ -292,7 +298,7 @@ module TinyGQL
       url = specified_by && directive_argument(specified_by, "url")
       one_of = !directive(defn.directives, "oneOf").nil?
       description = defn.description&.value || BUILTIN_SCALAR_DESCRIPTIONS[name]
-      @types[name] = Type.new(kind, name, fields, interfaces, members, values, description, url, one_of)
+      @types[name] = Type.new(kind, name, fields, interfaces, members, values, description, url, one_of, cost(defn.directives))
     end
 
     #: (Nodes::DirectiveDefinition) -> void
@@ -372,8 +378,25 @@ module TinyGQL
       (defs || []).each_with_object({}) { |d, h|
         raise Error, "Duplicate field #{d.name}" if h.key?(d.name)
         h[d.name] = Field.new(d.name, input_values(d.arguments_definition).values, d.type,
-          d.description&.value, deprecation_reason(d.directives))
+          d.description&.value, deprecation_reason(d.directives), cost(d.directives))
       }
+    end
+
+    # The weight from @cost in `directives`, as in the GraphQL cost
+    # directive specification: `@cost(weight: "2.5")`.  The weight is a
+    # String holding a number, so it can have a fraction.  Integral weights
+    # become Integers
+    #: (Array[Nodes::Directive]?) -> Numeric?
+    def cost directives
+      cost = directive(directives, "cost")
+      return unless cost
+      weight = directive_argument(cost, "weight")
+      raise Error, "@cost needs a weight" unless weight
+      value = Float(weight)
+      raise Error, "@cost weight must be finite, got #{weight.inspect}" unless value.finite?
+      value == value.floor ? value.to_i : value
+    rescue ArgumentError
+      raise Error, "@cost weight must be a number, got #{weight.inspect}"
     end
 
     #: (Array[Nodes::InputValueDefinition]?) -> Hash[String, InputValue]
